@@ -13,7 +13,7 @@ interface Props {
   unitSystem: UnitSystem;
 }
 
-export default function BeamCanvas({ beamLength, supports, pointLoads, moments, distributedLoads, unitSystem }: Props) {
+export default function BeamCanvas({ beamLength, supports, pointLoads, moments, distributedLoads, labeledPoints, unitSystem }: Props) {
   const U = UNIT_SYSTEMS[unitSystem];
   const W = 800, H = 370;
   const MARGIN_L = 80, MARGIN_R = 80;
@@ -180,6 +180,18 @@ export default function BeamCanvas({ beamLength, supports, pointLoads, moments, 
               <text x={(x1 + x2) / 2} y={BEAM_Y - 10 - Math.max(h1, h2)}
                 textAnchor="middle" fontSize="9" fill="#34d399">
                 {d.startMag.toFixed(0)}-{d.endMag.toFixed(0)} {U.distLoad}
+              </text>
+            </g>
+          );
+        })}
+
+        {labeledPoints.map(pt => {
+          const x = toX(pt.position);
+          return (
+            <g key={pt.label}>
+              <line x1={x} y1={BEAM_Y + 12} x2={x} y2={BEAM_Y + 32} stroke="#94a3b8" strokeWidth="0.5" strokeDasharray="2,2" />
+              <text x={x} y={BEAM_Y + 52} textAnchor="middle" fontSize="9" fill="#94a3b8">
+                {pt.position.toFixed(2)} {U.length}
               </text>
             </g>
           );

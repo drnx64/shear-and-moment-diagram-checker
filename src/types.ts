@@ -79,11 +79,13 @@ export interface SegmentDerivation {
     equation: string;
     terms: ShearDerivationLine[];
     result: string;
+    fullEquation: string;
   };
   moment: {
     equation: string;
     terms: MomentDerivationLine[];
     result: string;
+    fullEquation: string;
   };
 }
 
@@ -94,8 +96,14 @@ export interface SegmentInfo {
   momentFormula: string;
   vStart: number;
   mStart: number;
-  distLoad: { wStart: number; wEnd: number } | null;
+  distLoad: { wStart: number; wEnd: number; startPos: number; endPos: number } | null;
   derivation?: SegmentDerivation;
+}
+
+export interface ZeroCrossing {
+  position: number;
+  fromLabel: string;
+  distance: number;
 }
 
 export interface BeamResult {
@@ -106,6 +114,7 @@ export interface BeamResult {
   minShear: number;
   maxMoment: number;
   minMoment: number;
+  shearZeroCrossings: number[];
 }
 
 export interface LabeledPoint {

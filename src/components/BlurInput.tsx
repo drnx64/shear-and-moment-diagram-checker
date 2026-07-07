@@ -12,7 +12,6 @@ interface Props {
 
 export default function BlurInput({ value, onChange, onBlurValidate, min, max, className, placeholder }: Props) {
   const [local, setLocal] = useState(String(value));
-  const ref = useRef(value);
   const committed = useRef(value);
 
   useEffect(() => {

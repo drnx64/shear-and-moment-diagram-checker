@@ -30,8 +30,6 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const criticalPositions = labeledPoints.map(p => p.position);
-
   if (result.segments.length === 0 && result.reactions.length === 0) {
     return (
       <div className="text-slate-400 text-sm text-center py-8">
@@ -42,10 +40,6 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
 
   const thCls = "px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200";
   const tdCls = "px-3 py-2 text-sm align-top";
-
-  function fmtTerm(value: string): string {
-    return value.replace(/\\text\{/g, '').replace(/\}/g, '').replace(/\\\\/g, '').replace(/\\times/g, '×');
-  }
 
   async function handleDownloadPDF() {
     if (!reportRef.current) return;
@@ -70,6 +64,13 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
         backgroundColor: '#ffffff',
         logging: false,
         onclone: (doc) => {
+          doc.querySelectorAll('style').forEach(el => {
+            let css = el.textContent || '';
+            css = css.replace(/color-mix\([^)]*\)/g, '#64748b');
+            css = css.replace(/oklch\([^)]*\)/g, '#64748b');
+            css = css.replace(/oklab\([^)]*\)/g, '#64748b');
+            el.textContent = css;
+          });
           const clonedSvgs = doc.querySelectorAll('svg');
           clonedSvgs.forEach(svg => {
             if (!svg.getAttribute('width')) svg.setAttribute('width', '800');
@@ -226,7 +227,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
         )}
 
         {result.segments.length > 0 && (
-          <section>
+          <section style={{ display: 'none' }}>
             <h3 className="text-sm font-bold text-slate-700 mb-2">4. Segment Equations (Equilibrium Method)</h3>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-xs border-collapse">
@@ -250,11 +251,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
                               <LatexFormula formula={seg.derivation.shear.equation} />
                             </div>
                             <div className="font-mono text-[11px] text-orange-600/80">
-                              {seg.derivation.shear.terms.length > 0 ? (
-                                <span>-V{' '}{seg.derivation.shear.terms.map(t => fmtTerm(t.value)).join(' ')} = 0</span>
-                              ) : (
-                                <span>-V = 0</span>
-                              )}
+                              <LatexFormula formula={seg.derivation.shear.fullEquation} />
                             </div>
                             <div className="font-mono text-[11px] font-medium">
                               <LatexFormula formula={seg.shearFormula} />
@@ -271,11 +268,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
                               <LatexFormula formula={seg.derivation.moment.equation} />
                             </div>
                             <div className="font-mono text-[11px] text-blue-600/80">
-                              {seg.derivation.moment.terms.length > 0 ? (
-                                <span>-M{' '}{seg.derivation.moment.terms.map(t => fmtTerm(t.value)).join(' ')} = 0</span>
-                              ) : (
-                                <span>-M = 0</span>
-                              )}
+                              <LatexFormula formula={seg.derivation.moment.fullEquation} />
                             </div>
                             <div className="font-mono text-[11px] font-medium">
                               <LatexFormula formula={seg.momentFormula} />
@@ -303,7 +296,8 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
               maxMoment={result.maxMoment}
               minMoment={result.minMoment}
               beamLength={beamLength}
-              criticalPositions={criticalPositions}
+              labeledPoints={labeledPoints}
+              shearZeroCrossings={result.shearZeroCrossings}
               unitSystem={unitSystem}
             />
           </section>

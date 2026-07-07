@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, UnitSystem, LabeledPoint } from './types';
 import { solveBeam } from './engine/solver';
 import ControlPanel from './components/ControlPanel';
@@ -11,6 +11,25 @@ import { FileText, BarChart3, GitBranch } from 'lucide-react';
 
 type CanvasView = 'fbd' | 'beam';
 
+const CACHE_KEY = 'beam-solver-config';
+
+interface BeamConfigCache {
+  beamLength: number;
+  supports: BeamSupport[];
+  pointLoads: PointLoad[];
+  moments: ConcentratedMoment[];
+  distributedLoads: DistributedLoad[];
+  unitSystem: UnitSystem;
+}
+
+function loadConfig(): BeamConfigCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) return JSON.parse(raw) as BeamConfigCache;
+  } catch { /* ignore */ }
+  return null;
+}
+
 function expandRepeatedLoads(loads: PointLoad[]): PointLoad[] {
   const r: PointLoad[] = [];
   for (const p of loads) {
@@ -22,14 +41,21 @@ function expandRepeatedLoads(loads: PointLoad[]): PointLoad[] {
 }
 
 export default function App() {
-  const [beamLength, setBeamLength] = useState(10);
-  const [supports, setSupports] = useState<BeamSupport[]>([{ id: 'sup-1', type: 'fixed', position: 0 }]);
-  const [pointLoads, setPointLoads] = useState<PointLoad[]>([]);
-  const [moments, setMoments] = useState<ConcentratedMoment[]>([]);
-  const [distributedLoads, setDistributedLoads] = useState<DistributedLoad[]>([]);
-  const [unitSystem, setUnitSystem] = useState<UnitSystem>('metric');
+  const cached = useMemo(loadConfig, []);
+
+  const [beamLength, setBeamLength] = useState(cached?.beamLength ?? 10);
+  const [supports, setSupports] = useState<BeamSupport[]>(cached?.supports ?? [{ id: 'sup-1', type: 'fixed', position: 0 }]);
+  const [pointLoads, setPointLoads] = useState<PointLoad[]>(cached?.pointLoads ?? []);
+  const [moments, setMoments] = useState<ConcentratedMoment[]>(cached?.moments ?? []);
+  const [distributedLoads, setDistributedLoads] = useState<DistributedLoad[]>(cached?.distributedLoads ?? []);
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(cached?.unitSystem ?? 'metric');
   const [showReport, setShowReport] = useState(false);
   const [canvasView, setCanvasView] = useState<CanvasView>('beam');
+
+  useEffect(() => {
+    const config: BeamConfigCache = { beamLength, supports, pointLoads, moments, distributedLoads, unitSystem };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(config));
+  }, [beamLength, supports, pointLoads, moments, distributedLoads, unitSystem]);
 
   const expandedLoads = useMemo(() => expandRepeatedLoads(pointLoads), [pointLoads]);
 
@@ -48,8 +74,6 @@ export default function App() {
     for (const d of distributedLoads) { pts.set(d.startPos, 'dist'); pts.set(d.endPos, 'dist'); }
     return Array.from(pts.entries()).sort(([a], [b]) => a - b).map(([pos, type], i) => ({ position: pos, label: String.fromCharCode(65 + i), type }));
   }, [beamLength, supports, expandedLoads, moments, distributedLoads]);
-
-  const criticalPositions = useMemo(() => labeledPoints.map(p => p.position), [labeledPoints]);
   const hasResults = result.reactions.length > 0 || result.segments.length > 0;
 
   return (
@@ -101,7 +125,7 @@ export default function App() {
 
               {hasResults ? (
                 <>
-                  <DiagramOutput points={result.diagramPoints} maxShear={result.maxShear} minShear={result.minShear} maxMoment={result.maxMoment} minMoment={result.minMoment} beamLength={beamLength} criticalPositions={criticalPositions} unitSystem={unitSystem} />
+                  <DiagramOutput points={result.diagramPoints} maxShear={result.maxShear} minShear={result.minShear} maxMoment={result.maxMoment} minMoment={result.minMoment} beamLength={beamLength} labeledPoints={labeledPoints} shearZeroCrossings={result.shearZeroCrossings} unitSystem={unitSystem} />
                   <div className="bg-white rounded-lg border border-slate-200 p-3">
                     <ResultsTable segments={result.segments} reactions={result.reactions} supports={supports} unitSystem={unitSystem} />
                   </div>
@@ -120,6 +144,9 @@ export default function App() {
           )}
         </main>
       </div>
+      <footer className="text-center text-xs text-slate-400 py-3 border-t border-slate-200">
+        made by @drnx64
+      </footer>
     </div>
   );
 }

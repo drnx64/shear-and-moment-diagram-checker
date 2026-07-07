@@ -183,6 +183,9 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments, d
                 {pt.label}
               </text>
               <line x1={x} y1={BEAM_Y + 12} x2={x} y2={BEAM_Y + 35} stroke={color} strokeWidth="0.5" strokeDasharray="2,2" opacity="0.5" />
+              <text x={x} y={BEAM_Y + 48} textAnchor="middle" fontSize="8" fill={color}>
+                {pt.position.toFixed(2)} {U.length}
+              </text>
             </g>
           );
         })}

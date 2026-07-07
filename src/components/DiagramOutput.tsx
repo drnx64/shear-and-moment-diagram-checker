@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import type { DiagramPoint, UnitSystem } from '../types';
+import type { DiagramPoint, LabeledPoint, UnitSystem } from '../types';
 import { UNIT_SYSTEMS } from '../types';
 
 interface Props {
@@ -9,7 +9,8 @@ interface Props {
   maxMoment: number;
   minMoment: number;
   beamLength: number;
-  criticalPositions: number[];
+  labeledPoints: LabeledPoint[];
+  shearZeroCrossings: number[];
   unitSystem: UnitSystem;
 }
 
@@ -32,7 +33,7 @@ function buildFillPath(points: DiagramPoint[], getY: (pt: DiagramPoint) => numbe
   return d;
 }
 
-export default function DiagramOutput({ points, maxShear, minShear, maxMoment, minMoment, beamLength, criticalPositions, unitSystem }: Props) {
+export default function DiagramOutput({ points, maxShear, minShear, maxMoment, minMoment, beamLength, labeledPoints, shearZeroCrossings, unitSystem }: Props) {
   const U = UNIT_SYSTEMS[unitSystem];
   const W = 700, H = 200;
   const MARGIN = { top: 20, right: 20, bottom: 40, left: 60 };
@@ -49,6 +50,14 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
 
   const shearRange = Math.max(Math.abs(maxShear), Math.abs(minShear), 1);
   const momentRange = Math.max(Math.abs(maxMoment), Math.abs(minMoment), 1);
+
+  const shearZeroAnnotations = shearZeroCrossings.map(pos => {
+    const leftPt = labeledPoints
+      .filter(pt => pt.position < pos)
+      .reduce<LabeledPoint | null>((best, pt) => !best || pt.position > best.position ? pt : best, null);
+    const distance = leftPt ? pos - leftPt.position : pos;
+    return { px: toX(pos), py: yScale(0, shearRange), label: leftPt?.label ?? '', distance };
+  });
 
   const shearPath = buildPath(points, p => yScale(p.shear, shearRange), toX);
   const shearFillPath = buildFillPath(points, p => yScale(p.shear, shearRange), toX, MID_Y);
@@ -70,18 +79,6 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
   const maxMPt = findExtreme(p => p.moment, (a, b) => a > b);
   const minMPt = findExtreme(p => p.moment, (a, b) => a < b);
 
-  const axisTickX = (x: number) => {
-    const px = toX(x);
-    return (
-      <g key={x}>
-        <line x1={px} y1={MARGIN.top + DRAW_H} x2={px} y2={MARGIN.top + DRAW_H + 5} stroke="#94a3b8" strokeWidth="1" />
-        <text x={px} y={MARGIN.top + DRAW_H + 16} textAnchor="middle" fontSize="9" fill="#64748b">
-          {x.toFixed(1)}
-        </text>
-      </g>
-    );
-  };
-
   function yGridLines(range: number, steps: number): JSX.Element[] {
     const lines: JSX.Element[] = [];
     for (let i = -steps; i <= steps; i++) {
@@ -99,25 +96,31 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
     return lines;
   }
 
-  const xTicks: JSX.Element[] = [];
-  const numXTicks = Math.min(6, Math.ceil(beamLength / 2));
-  const xStep = beamLength / numXTicks;
-  for (let i = 0; i <= numXTicks; i++) {
-    xTicks.push(axisTickX(i * xStep));
-  }
-
-  const critLines = criticalPositions.map(pos => {
-    const px = toX(pos);
+  const xTicks: JSX.Element[] = labeledPoints.map(pt => {
+    const px = toX(pt.position);
     return (
-      <line key={`cl-${pos}`} x1={px} y1={MARGIN.top} x2={px} y2={MARGIN.top + DRAW_H}
+      <g key={`xt-${pt.label}`}>
+        <line x1={px} y1={MARGIN.top + DRAW_H} x2={px} y2={MARGIN.top + DRAW_H + 5} stroke="#94a3b8" strokeWidth="1" />
+        <text x={px} y={MARGIN.top + DRAW_H + 16} textAnchor="middle" fontSize="10" fontWeight="bold" fill="#64748b">
+          {pt.label}
+        </text>
+      </g>
+    );
+  });
+
+  const critLines = labeledPoints.map(pt => {
+    const px = toX(pt.position);
+    return (
+      <line key={`cl-${pt.label}`} x1={px} y1={MARGIN.top} x2={px} y2={MARGIN.top + DRAW_H}
         stroke="#cbd5e1" strokeWidth="0.5" strokeDasharray="3,3" />
     );
   });
 
-  const Chart = ({ path, fillPath, color, fillColor, maxPt, minPt, maxVal, minVal, range, label, unit }: {
+  const Chart = ({ path, fillPath, color, fillColor, maxPt, minPt, maxVal, minVal, range, label, unit, zeroAnnotations }: {
     path: string; fillPath: string; color: string; fillColor: string;
     maxPt: DiagramPoint | null; minPt: DiagramPoint | null;
     maxVal: number; minVal: number; range: number; label: string; unit: string;
+    zeroAnnotations?: { px: number; py: number; label: string; distance: number }[];
   }) => (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto bg-white rounded-lg border border-slate-200 shadow-sm" preserveAspectRatio="xMidYMid meet">
       {yGridLines(range, 3)}
@@ -159,6 +162,16 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
       <text x={MARGIN.left + DRAW_W / 2} y={MARGIN.top + DRAW_H + 28} textAnchor="middle" fontSize="9" fill="#94a3b8">
         Position ({U.length})
       </text>
+
+      {zeroAnnotations?.map((z, i) => (
+        <g key={`z${i}`}>
+          <line x1={z.px} y1={z.py - 6} x2={z.px} y2={z.py + 6} stroke="#18181b" strokeWidth="1.5" />
+          <circle cx={z.px} cy={z.py} r="3" fill="#18181b" />
+          <text x={z.px + 6} y={z.py - 4} fontSize="9" fill="#18181b" fontWeight="bold">
+            x = {z.distance.toFixed(2)} {U.length} {z.label ? `from ${z.label}` : ''}
+          </text>
+        </g>
+      ))}
     </svg>
   );
 
@@ -169,6 +182,7 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
         maxPt={maxSPt} minPt={minSPt}
         maxVal={maxShear} minVal={minShear}
         range={shearRange} label="Shear Force" unit={U.force}
+        zeroAnnotations={shearZeroAnnotations}
       />
       <Chart
         path={momentPath} fillPath={momentFillPath} color="#60a5fa" fillColor="rgba(96,165,250,0.08)"
