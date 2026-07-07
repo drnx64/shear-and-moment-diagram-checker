@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import type { DiagramPoint, UnitSystem } from '../types';
 import { UNIT_SYSTEMS } from '../types';
 

@@ -13,7 +13,7 @@ interface Props {
   unitSystem: UnitSystem;
 }
 
-export default function BeamCanvas({ beamLength, supports, pointLoads, moments, distributedLoads, reactions, labeledPoints, unitSystem }: Props) {
+export default function BeamCanvas({ beamLength, supports, pointLoads, moments, distributedLoads, unitSystem }: Props) {
   const U = UNIT_SYSTEMS[unitSystem];
   const W = 800, H = 370;
   const MARGIN_L = 80, MARGIN_R = 80;

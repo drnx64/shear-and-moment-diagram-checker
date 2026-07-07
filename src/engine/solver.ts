@@ -90,7 +90,7 @@ function computeInternalForces(
 }
 
 function computeReactions(
-  beamLength: number,
+  _beamLength: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
   moments: ConcentratedMoment[],
@@ -270,8 +270,6 @@ function generateSegmentDerivation(
   mStart: number,
   distLoad: { wStart: number; wEnd: number } | null,
 ): SegmentDerivation {
-  const U = { force: '', length: '', distLoad: '', moment: '' };
-
   function term(val: number, desc: string): string {
     const sign = val >= 0 ? '+' : '-';
     return `${sign} ${fmtNumAbs(val)}${desc}`;
@@ -321,7 +319,6 @@ function generateSegmentDerivation(
   for (const m of moments) {
     if (m.position >= segEnd) continue;
     const mv = (m.direction === 'CCW' ? 1 : -1) * m.magnitude;
-    const desc = ` (M \\text{ ${m.direction}} @ ${m.position.toFixed(2)})`;
     momentTerms.push(momentTerm(mv, '1'));
   }
 
@@ -392,7 +389,7 @@ function expandMomentCubic(mStart: number, vStart: number, xStart: number, w1: n
 
 function generateSegments(
   criticalPoints: number[],
-  beamLength: number,
+  _beamLength: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
   moments: ConcentratedMoment[],
@@ -409,7 +406,7 @@ function generateSegments(
     const midX = (xStart + xEnd) / 2;
 
     const forcesAtStart = computeInternalForces(xStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions);
-    const forcesAtEnd = computeInternalForces(xEnd - 0.0001, supports, pointLoads, moments, distributedLoads, reactions);
+
 
     const vStart = forcesAtStart.shear;
     const mStart = forcesAtStart.moment;

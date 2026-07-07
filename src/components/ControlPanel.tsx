@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, SupportType, LoadCase, UnitSystem, LoadDirection, MomentDirection } from '../types';
+import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, SupportType, LoadCase, UnitSystem } from '../types';
 import { UNIT_SYSTEMS } from '../types';
 import {
   Trash2, Plus, ChevronDown, ChevronUp,
