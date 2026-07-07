@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, SupportType, LoadCase, UnitSystem } from '../types';
 import { UNIT_SYSTEMS } from '../types';
+import BlurInput from './BlurInput';
 import {
   Trash2, Plus, ChevronDown, ChevronUp,
   Ruler, Columns2, ArrowDown, ArrowUp, RotateCw, LayoutDashboard,
@@ -97,10 +98,6 @@ export default function ControlPanel({
   function delDist(id: string) { setDistributedLoads(distributedLoads.filter(d => d.id !== id)); }
 
   function cap(v: number) { return Math.min(beamLength, Math.max(0, v)); }
-function safeParse(s: string, fallback?: number): number | undefined {
-  const v = parseFloat(s);
-  return isNaN(v) ? fallback : v;
-}
 
   function Section({ icon: Icon, title, count, max, open, onToggle, children }: {
     icon: React.ElementType; title: string; count: number; max?: number; open: boolean; onToggle: () => void; children: React.ReactNode;
@@ -136,10 +133,7 @@ function safeParse(s: string, fallback?: number): number | undefined {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
         <label className={`${labelBase} flex items-center gap-1.5`}><Ruler size={13} /> Beam Length</label>
         <div className="flex items-center gap-2">
-          <input type="text" inputMode="decimal" value={beamLength}
-            onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0.1) setBeamLength(v); }}
-            onBlur={() => { if (beamLength < 0.1) setBeamLength(0.1); }}
-            className={inputBase} />
+          <BlurInput value={beamLength} onChange={setBeamLength} min={0.1} className={inputBase} />
           <span className="text-sm font-medium text-slate-400 w-6">{U.length}</span>
         </div>
       </div>
@@ -157,9 +151,7 @@ function safeParse(s: string, fallback?: number): number | undefined {
               </div>
               <div>
                 <label className={labelBase}>Position ({U.length})</label>
-                <input type="text" inputMode="decimal" value={s.position}
-                  onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updSupport(s.id, { position: cap(v) }); }}
-                  className={inputBase} />
+                <BlurInput value={s.position} onChange={v => updSupport(s.id, { position: cap(v) })} className={inputBase} />
               </div>
             </div>
             <button onClick={() => delSupport(s.id)}
@@ -192,22 +184,16 @@ function safeParse(s: string, fallback?: number): number | undefined {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className={labelBase}>Position ({U.length})</label>
-                <input type="text" inputMode="decimal" value={p.position}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updLoad(p.id, { position: cap(v) }); }}
-                  className={inputBase} />
+                <BlurInput value={p.position} onChange={v => updLoad(p.id, { position: cap(v) })} className={inputBase} />
               </div>
               <div>
                 <label className={labelBase}>Magnitude ({U.force})</label>
-                <input type="text" inputMode="decimal" value={p.magnitude}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updLoad(p.id, { magnitude: Math.max(0, v) }); }}
-                  className={inputBase} />
+                <BlurInput value={p.magnitude} onChange={v => updLoad(p.id, { magnitude: Math.max(0, v) })} min={0} className={inputBase} />
               </div>
             </div>
             <div>
               <label className={labelBase}>Angle (° from vertical)</label>
-              <input type="text" inputMode="decimal" value={p.angle}
-                onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updLoad(p.id, { angle: Math.min(90, Math.max(0, v)) }); }}
-                className={inputBase} />
+              <BlurInput value={p.angle} onChange={v => updLoad(p.id, { angle: v })} min={0} max={90} className={inputBase} />
             </div>
             <div>
               <label className={labelBase}>Load Case</label>
@@ -227,15 +213,11 @@ function safeParse(s: string, fallback?: number): number | undefined {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className={labelBase}>Number of Loads</label>
-                    <input type="text" inputMode="numeric" value={p.repeatCount}
-                      onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) updLoad(p.id, { repeatCount: Math.max(2, Math.min(20, v)) }); }}
-                      className={inputBase} />
+                    <BlurInput value={p.repeatCount} onChange={v => updLoad(p.id, { repeatCount: v })} min={2} max={20} className={inputBase} />
                   </div>
                   <div>
                     <label className={labelBase}>Interval ({U.length})</label>
-                    <input type="text" inputMode="decimal" value={p.repeatInterval}
-                      onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updLoad(p.id, { repeatInterval: Math.max(0.1, v) }); }}
-                      className={inputBase} />
+                    <BlurInput value={p.repeatInterval} onChange={v => updLoad(p.id, { repeatInterval: v })} min={0.1} className={inputBase} />
                   </div>
                 </div>
               )}
@@ -270,15 +252,11 @@ function safeParse(s: string, fallback?: number): number | undefined {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className={labelBase}>Magnitude ({U.moment})</label>
-                <input type="text" inputMode="decimal" value={m.magnitude}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updMoment(m.id, { magnitude: v }); }}
-                  className={inputBase} />
+                <BlurInput value={m.magnitude} onChange={v => updMoment(m.id, { magnitude: v })} className={inputBase} />
               </div>
               <div>
                 <label className={labelBase}>Position ({U.length})</label>
-                <input type="text" inputMode="decimal" value={m.position}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updMoment(m.id, { position: cap(v) }); }}
-                  className={inputBase} />
+                <BlurInput value={m.position} onChange={v => updMoment(m.id, { position: cap(v) })} className={inputBase} />
               </div>
             </div>
             <div className="flex justify-end">
@@ -300,29 +278,21 @@ function safeParse(s: string, fallback?: number): number | undefined {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className={labelBase}>Start Pos ({U.length})</label>
-                <input type="text" inputMode="decimal" value={d.startPos}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updDist(d.id, { startPos: cap(v) }); }}
-                  className={inputBase} />
+                <BlurInput value={d.startPos} onChange={v => updDist(d.id, { startPos: cap(v) })} className={inputBase} />
               </div>
               <div>
                 <label className={labelBase}>End Pos ({U.length})</label>
-                <input type="text" inputMode="decimal" value={d.endPos}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updDist(d.id, { endPos: cap(v) }); }}
-                  className={inputBase} />
+                <BlurInput value={d.endPos} onChange={v => updDist(d.id, { endPos: cap(v) })} className={inputBase} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className={labelBase}>Start Mag ({U.distLoad})</label>
-                <input type="text" inputMode="decimal" value={d.startMag}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updDist(d.id, { startMag: v }); }}
-                  className={inputBase} />
+                <BlurInput value={d.startMag} onChange={v => updDist(d.id, { startMag: v })} className={inputBase} />
               </div>
               <div>
                 <label className={labelBase}>End Mag ({U.distLoad})</label>
-                <input type="text" inputMode="decimal" value={d.endMag}
-                  onChange={e => { const v = safeParse(e.target.value); if (v !== undefined) updDist(d.id, { endMag: v }); }}
-                  className={inputBase} />
+                <BlurInput value={d.endMag} onChange={v => updDist(d.id, { endMag: v })} className={inputBase} />
               </div>
             </div>
             <div>
