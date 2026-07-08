@@ -13,7 +13,7 @@ interface Props {
   unitSystem: UnitSystem;
 }
 
-export default function FBDCanvas({ beamLength, supports, pointLoads, moments, distributedLoads, reactions, labeledPoints, unitSystem }: Props) {
+export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _moments, distributedLoads, reactions, labeledPoints, unitSystem }: Props) {
   const U = UNIT_SYSTEMS[unitSystem];
   const W = 700, H = 280;
   const MARGIN_L = 60, MARGIN_R = 60;
@@ -87,7 +87,6 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments, d
           const x = toX(sup.position);
 
           const vLen = arrowLen(r.vertical);
-          const vDir = r.vertical >= 0 ? -1 : 1;
           const vTipX = x;
           const vTipY = BEAM_BOT + (r.vertical >= 0 ? -vLen : vLen);
           const vTailY = BEAM_BOT;

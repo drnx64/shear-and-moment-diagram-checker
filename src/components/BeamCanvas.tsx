@@ -70,7 +70,7 @@ export default function BeamCanvas({ beamLength, supports, pointLoads, moments, 
 
         <rect x={MARGIN_L} y={BEAM_TOP} width={DRAW_W} height={BEAM_H} rx="3" fill="url(#beamGrad)" />
 
-        {supports.map((s, i) => {
+        {supports.map(s => {
           const x = toX(s.position);
           switch (s.type) {
             case 'fixed': {

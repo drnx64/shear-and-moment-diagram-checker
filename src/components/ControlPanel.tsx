@@ -5,7 +5,7 @@ import BlurInput from './BlurInput';
 import {
   Trash2, Plus, ChevronRight, ChevronDown,
   Ruler, Columns2, ArrowDown, ArrowUp, RotateCw, LayoutDashboard,
-  Pin, Circle, Square, GripVertical,
+  Pin, Circle, Square,
 } from 'lucide-react';
 
 interface Props {

@@ -169,12 +169,6 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
     }
   }
 
-  function FormatVal({ val, fmt }: { val: number; fmt?: string }) {
-    const formatted = val.toFixed(fmt ? parseInt(fmt) : 2);
-    const prefix = val > 0.001 ? '+' : val < -0.001 ? '' : '';
-    return <span className="font-medium">{prefix}{formatted}</span>;
-  }
-
   return (
     <div>
       <div ref={reportRef} className="space-y-6 bg-white" style={{ width: '816px', margin: '0 auto' }}>

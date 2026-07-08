@@ -7,7 +7,7 @@ import FBDCanvas from './components/FBDCanvas';
 import DiagramOutput from './components/DiagramOutput';
 import ResultsTable from './components/ResultsTable';
 import ReportView from './components/ReportView';
-import { FileText, BarChart3, RotateCcw, Menu, X, Ruler } from 'lucide-react';
+import { FileText, RotateCcw, Menu, X, Ruler } from 'lucide-react';
 
 type CanvasView = 'beam' | 'fbd';
 

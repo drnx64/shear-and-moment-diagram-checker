@@ -96,7 +96,7 @@ export function computeInternalShearMoment(
 }
 
 function computeReactions(
-  beamLength: number,
+  _beamLength: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
   moments: ConcentratedMoment[],
@@ -247,7 +247,7 @@ function fmtNumAbs(n: number): string {
 }
 
 function generateReactionDerivation(
-  beamLength: number,
+  _beamLength: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
   moments: ConcentratedMoment[],
@@ -280,7 +280,6 @@ function generateReactionDerivation(
 
     for (const p of pointLoads) {
       const v = pointLoadVertical(p);
-      const dirStr = p.direction === 'up' ? '\\uparrow' : '\\downarrow';
       sumVertTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
       sumMomTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)} \\times (${p.position.toFixed(2)} - ${left.position.toFixed(2)})`);
       sumVert += v;
@@ -319,7 +318,6 @@ function generateReactionDerivation(
     steps.push({ label: 'R_L', equation: `R_L = ${rLeftVert.toFixed(4)}` });
 
     for (const s of sorted) {
-      const vert = s.id === left.id ? rLeftVert : rRightVert;
       if (s.type === 'fixed') {
         steps.push({ label: `M_${s.id}`, equation: `\\text{Moment reaction at fixed support computed from } \\sum M = 0` });
       }
@@ -529,7 +527,7 @@ function generateSegmentDerivation(
 
 function generateSegments(
   criticalPoints: number[],
-  beamLength: number,
+  _beamLength: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
   moments: ConcentratedMoment[],
