@@ -593,49 +593,6 @@ function generateSegments(
   return segments;
 }
 
-function computeShearZeroCrossings(segments: SegmentInfo[]): number[] {
-  const crossings: number[] = [];
-
-  for (const seg of segments) {
-    const { start, end, vStart, distLoad } = seg;
-    if (!distLoad) continue;
-
-    const wStart = distLoad.wStart;
-    const wEnd = distLoad.wEnd;
-    const L = end - start;
-    if (L < 1e-10) continue;
-
-    if (Math.abs(wStart - wEnd) < 1e-8) {
-      const w = wStart;
-      if (Math.abs(w) < 1e-10) continue;
-      const xZero = start + vStart / w;
-      if (xZero > start + 1e-8 && xZero < end - 1e-8) {
-        crossings.push(xZero);
-      }
-    } else {
-      const mSlope = (wEnd - wStart) / L;
-      const a = 0.5 * mSlope;
-      const b = wStart - mSlope * start;
-      const c = 0.5 * mSlope * start * start - wStart * start - vStart;
-
-      if (Math.abs(a) > 1e-10) {
-        const disc = b * b - 4 * a * c;
-        if (disc >= 0) {
-          const sqrtD = Math.sqrt(disc);
-          for (const root of [(-b + sqrtD) / (2 * a), (-b - sqrtD) / (2 * a)]) {
-            if (root > start + 1e-8 && root < end - 1e-8) {
-              crossings.push(root);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  crossings.sort((a, b) => a - b);
-  return crossings;
-}
-
 export function solveBeam(
   beamLength: number,
   supports: BeamSupport[],
@@ -690,7 +647,20 @@ export function solveBeam(
     if (p.moment < minMoment) minMoment = p.moment;
   }
 
-  const shearZeroCrossings = computeShearZeroCrossings(segments);
+  // Find shear zero crossings directly from diagram points
+  // (catches crossings in all cases: distributed loads, point loads, supports)
+  const shearZeroCrossings: number[] = [];
+  for (let i = 0; i < diagramPoints.length - 1; i++) {
+    const p1 = diagramPoints[i];
+    const p2 = diagramPoints[i + 1];
+    if (p1.shear * p2.shear < 0) {
+      const t = p1.shear / (p1.shear - p2.shear);
+      const x = p1.x + t * (p2.x - p1.x);
+      if (shearZeroCrossings.length === 0 || Math.abs(shearZeroCrossings[shearZeroCrossings.length - 1] - x) > 1e-6) {
+        shearZeroCrossings.push(x);
+      }
+    }
+  }
 
   return { reactions, diagramPoints, segments, maxShear, minShear, maxMoment, minMoment, shearZeroCrossings, reactionDerivation };
 }
