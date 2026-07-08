@@ -64,11 +64,7 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
   const momentRange = Math.max(Math.abs(maxMoment), Math.abs(minMoment), 1);
 
   const shearZeroAnnotations = shearZeroCrossings.map(pos => {
-    const leftPt = labeledPoints
-      .filter(pt => pt.position < pos)
-      .reduce<LabeledPoint | null>((best, pt) => !best || pt.position > best.position ? pt : best, null);
-    const distance = leftPt ? pos - leftPt.position : pos;
-    return { px: toX(pos), py: yScale(0, shearRange), label: leftPt?.label ?? '', distance };
+    return { px: toX(pos), py: yScale(0, shearRange), label: '', distance: pos };
   });
 
   const shearPath = buildPath(points, p => yScale(p.shear, shearRange), toX);

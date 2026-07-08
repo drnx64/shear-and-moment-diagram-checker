@@ -556,7 +556,12 @@ function generateSegments(
 
     let distLoadInfo: { wStart: number; wEnd: number; startPos: number; endPos: number } | null = null;
     if (distLoad) {
-      distLoadInfo = { wStart: distLoad.startMag, wEnd: distLoad.endMag, startPos: distLoad.startPos, endPos: distLoad.endPos };
+      const wAt = (x: number) => {
+        const dL = distLoad.endPos - distLoad.startPos;
+        if (Math.abs(dL) < 1e-10) return distLoad.startMag;
+        return distLoad.startMag + (distLoad.endMag - distLoad.startMag) * (x - distLoad.startPos) / dL;
+      };
+      distLoadInfo = { wStart: wAt(xStart), wEnd: wAt(xEnd), startPos: xStart, endPos: xEnd };
     }
 
     const derivation = generateSegmentDerivation(
@@ -600,9 +605,9 @@ function computeShearZeroCrossings(segments: SegmentInfo[]): number[] {
       }
     } else {
       const mSlope = (wEnd - wStart) / L;
-      const a = -0.5 * mSlope;
-      const b = -(wStart + mSlope * start);
-      const c = vStart;
+      const a = 0.5 * mSlope;
+      const b = wStart - mSlope * start;
+      const c = 0.5 * mSlope * start * start - wStart * start - vStart;
 
       if (Math.abs(a) > 1e-10) {
         const disc = b * b - 4 * a * c;
