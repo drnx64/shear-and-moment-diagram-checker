@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, Reaction, LabeledPoint, UnitSystem } from '../types';
-import { UNIT_SYSTEMS } from '../types';
+import { UNIT_SYSTEMS, fmtNum } from '../types';
 
 interface Props {
   beamLength: number;
@@ -61,6 +61,12 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
           <marker id="reaction-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
             <polygon points="0 0, 0 10, 10 5" fill="#2563eb" />
           </marker>
+          <marker id="fbd-pt-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <polygon points="0 0, 0 10, 10 5" fill="#f59e0b" />
+          </marker>
+          <marker id="fbd-dist-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <polygon points="0 0, 0 10, 10 5" fill="#14b8a6" />
+          </marker>
           <linearGradient id="beamGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#94a3b8" />
             <stop offset="100%" stopColor="#64748b" />
@@ -106,7 +112,7 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
                   <line x1={x} y1={tailY} x2={x} y2={tipY} stroke="#2563eb" strokeWidth="2" markerEnd="url(#reaction-arrow)" />
                   <rect x={x - 20} y={tailY + (r.vertical >= 0 ? 4 : -18)} width="40" height="14" rx="3" fill="rgba(255,255,255,0.9)" />
                   <text x={x} y={tailY + (r.vertical >= 0 ? 14 : -6)} textAnchor="middle" fontSize="9" fill={valColor(r.vertical)} fontWeight="700">
-                    {r.vertical.toFixed(2)} {U.force}
+                    {fmtNum(r.vertical)} {U.force}
                   </text>
                 </>
               )}
@@ -114,7 +120,7 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
                 <>
                   <line x1={x} y1={BEAM_BOT + 22} x2={x + (r.horizontal >= 0 ? 30 : -30)} y2={BEAM_BOT + 22} stroke="#2563eb" strokeWidth="2" markerEnd="url(#reaction-arrow)" />
                   <text x={x + (r.horizontal >= 0 ? 34 : -34)} y={BEAM_BOT + 26} textAnchor={r.horizontal >= 0 ? 'start' : 'end'} fontSize="9" fill={valColor(r.horizontal)} fontWeight="700">
-                    {r.horizontal.toFixed(2)} {U.force}
+                    {fmtNum(r.horizontal)} {U.force}
                   </text>
                 </>
               )}
@@ -127,7 +133,7 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
                       : `${x - 4},${BEAM_BOT + 40} ${x - 8},${BEAM_BOT + 34} ${x - 12},${BEAM_BOT + 40}`
                   } fill="#2563eb" />
                   <text x={x} y={BEAM_BOT + 64} textAnchor="middle" fontSize="9" fill={valColor(r.moment)} fontWeight="700">
-                    {r.moment.toFixed(2)} {U.moment}
+                    {fmtNum(r.moment)} {U.moment}
                   </text>
                 </>
               )}
@@ -142,8 +148,6 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
           const dx = len * Math.sin(rad);
           const dy = len * Math.cos(rad);
           // Loads always shown above the beam
-          // Downward: arrow from above beam pointing DOWN into beam
-          // Upward: arrow from beam top pointing UP away from beam
           let tailX: number, tailY: number, tipX: number, tipY: number;
           if (p.direction === 'down') {
             tailX = x + dx;
@@ -157,8 +161,11 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
             tipY = BEAM_TOP - dy;
           }
           return (
-            <g key={p.id} opacity="0.25">
-              <line x1={tailX} y1={tailY} x2={tipX} y2={tipY} stroke="#94a3b8" strokeWidth="2" />
+            <g key={p.id}>
+              <line x1={tailX} y1={tailY} x2={tipX} y2={tipY} stroke="#f59e0b" strokeWidth="2.5" markerEnd="url(#fbd-pt-arrow)" />
+              <text x={tipX + 6} y={tipY + 4} fontSize="10" fill="#f59e0b" fontWeight="600">
+                {fmtNum(p.magnitude, 1)} {U.force}
+              </text>
             </g>
           );
         })}
@@ -172,14 +179,24 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
           const p1 = baseY - h1;
           const p2 = baseY - h2;
           return (
-            <g key={d.id} opacity="0.15">
-              <polygon points={`${x1},${baseY} ${x1},${p1} ${x2},${p2} ${x2},${baseY}`} fill="#94a3b8" stroke="#94a3b8" strokeWidth="1" />
-              <text x={x1} y={p1 - 4} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="600" opacity="1">
-                {d.startMag.toFixed(1)}
+            <g key={d.id}>
+              <polygon points={`${x1},${baseY} ${x1},${p1} ${x2},${p2} ${x2},${baseY}`} fill="rgba(20, 184, 166, 0.18)" stroke="#14b8a6" strokeWidth="1.5" />
+              {Array.from({ length: 5 }, (_, i) => {
+                const t = (i + 1) / 6;
+                const px = x1 + (x2 - x1) * t;
+                const ph = h1 + (h2 - h1) * t;
+                const arrowTop = baseY - ph;
+                const arrowBot = baseY - 4;
+                return (
+                  <line key={i} x1={px} y1={arrowTop} x2={px} y2={arrowBot} stroke="#14b8a6" strokeWidth="1" opacity="0.7" markerEnd="url(#fbd-dist-arrow)" />
+                );
+              })}
+              <text x={x1} y={p1 - 6} textAnchor="middle" fontSize="9" fill="#14b8a6" fontWeight="600">
+                {fmtNum(d.startMag, 1)} {U.force}/{U.length}
               </text>
               {Math.abs(d.endMag - d.startMag) > 1e-6 && (
-                <text x={x2} y={p2 - 4} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="600" opacity="1">
-                  {d.endMag.toFixed(1)}
+                <text x={x2} y={p2 - 6} textAnchor="middle" fontSize="9" fill="#14b8a6" fontWeight="600">
+                  {fmtNum(d.endMag, 1)} {U.force}/{U.length}
                 </text>
               )}
             </g>
@@ -188,7 +205,7 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
 
         <line x1={MARGIN_L} y1={BEAM_BOT + 52} x2={MARGIN_L + DRAW_W} y2={BEAM_BOT + 52} stroke="#cbd5e1" strokeWidth="0.5" />
         <text x={MARGIN_L + DRAW_W / 2} y={BEAM_BOT + 64} textAnchor="middle" fontSize="9" fill="#94a3b8">
-          L = {beamLength.toFixed(2)} {U.length}
+          L = {fmtNum(beamLength)} {U.length}
         </text>
       </svg>
     </div>

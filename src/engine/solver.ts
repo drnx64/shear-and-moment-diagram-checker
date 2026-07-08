@@ -3,6 +3,7 @@ import type {
   Reaction, DiagramPoint, SegmentInfo, BeamResult, SegmentDerivation,
   ReactionDerivationStep,
 } from '../types';
+import { fmtNum } from '../types';
 
 function cleanNumber(n: number): number {
   if (Math.abs(n) < 1e-8) return 0;
@@ -25,6 +26,7 @@ type DistContrib = { shear: number; moment: number };
 function computeDistLoadShearMoment(x: number, load: DistributedLoad): DistContrib {
   const { startPos: a, endPos: b, startMag: w1, endMag: w2 } = load;
   if (x <= a) return { shear: 0, moment: 0 };
+  if (Math.abs(b - a) < 1e-10) return { shear: 0, moment: 0 };
 
   const L = b - a;
   const m = (w2 - w1) / L;
@@ -39,10 +41,16 @@ function computeDistLoadShearMoment(x: number, load: DistributedLoad): DistContr
     moment = -(0.5 * w1 * dx * dx + (1 / 6) * m * dx * dx * dx);
   } else {
     const totalForce = (w1 + w2) * L / 2;
-    const centroidOffset = L * (w1 + 2 * w2) / (3 * (w1 + w2));
-    const centroid = a + centroidOffset;
-    shear = -totalForce;
-    moment = -totalForce * (x - centroid);
+    if (Math.abs(w1 + w2) < 1e-10) {
+      const centroid = (a + b) / 2;
+      shear = -totalForce;
+      moment = -totalForce * (x - centroid);
+    } else {
+      const centroidOffset = L * (w1 + 2 * w2) / (3 * (w1 + w2));
+      const centroid = a + centroidOffset;
+      shear = -totalForce;
+      moment = -totalForce * (x - centroid);
+    }
   }
 
   return { shear: cleanNumber(shear), moment: cleanNumber(moment) };
@@ -257,7 +265,7 @@ function generateReactionDerivation(
   const sorted = [...supports].sort((a, b) => a.position - b.position);
 
   if (sorted.length === 1 && sorted[0].type === 'fixed') {
-    steps.push({ label: 'Configuration', equation: '\\text{Single fixed support at } x = ' + sorted[0].position.toFixed(2) });
+    steps.push({ label: 'Configuration', equation: '\\text{Single fixed support at } x = ' + fmtNum(sorted[0].position) });
     steps.push({ label: 'ΣF_y = 0 (↑+)', equation: 'R_y + \\sum F_{\\text{vertical}} = 0' });
     steps.push({ label: 'ΣF_x = 0 (→+)', equation: 'R_x + \\sum F_{\\text{horizontal}} = 0' });
     steps.push({ label: 'ΣM = 0 (CCW+)', equation: 'M_R + \\sum M_{\\text{about support}} = 0' });
@@ -271,7 +279,7 @@ function generateReactionDerivation(
     const dist = right.position - left.position;
 
     steps.push({ label: 'Setup', equation: '\\text{Two supports: } ' +
-      `x_L = ${left.position.toFixed(2)}, x_R = ${right.position.toFixed(2)}, L = ${dist.toFixed(2)}` });
+      `x_L = ${fmtNum(left.position)}, x_R = ${fmtNum(right.position)}, L = ${fmtNum(dist)}` });
 
     let sumVertTerms: string[] = [];
     let sumMomTerms: string[] = [];
@@ -280,8 +288,8 @@ function generateReactionDerivation(
 
     for (const p of pointLoads) {
       const v = pointLoadVertical(p);
-      sumVertTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
-      sumMomTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)}(${p.position.toFixed(2)} - ${left.position.toFixed(2)})`);
+      sumVertTerms.push(`${v >= 0 ? '+' : ''}${fmtNum(v)}`);
+      sumMomTerms.push(`${v >= 0 ? '+' : ''}${fmtNum(v)}(${fmtNum(p.position - left.position)})`);
       sumVert += v;
       sumMomAboutLeft += v * (p.position - left.position);
     }
@@ -293,15 +301,15 @@ function generateReactionDerivation(
       const centroid = denom !== 0
         ? d.startPos + Ld * (d.startMag + 2 * d.endMag) / (3 * denom)
         : (d.startPos + d.endPos) / 2;
-      sumVertTerms.push(`${totalForce >= 0 ? '-' : '+'}${Math.abs(totalForce).toFixed(2)}`);
-      sumMomTerms.push(`- ${totalForce.toFixed(2)}(${centroid.toFixed(2)} - ${left.position.toFixed(2)})`);
+      sumVertTerms.push(`${totalForce >= 0 ? '-' : '+'}${fmtNum(Math.abs(totalForce))}`);
+      sumMomTerms.push(`- ${fmtNum(totalForce)}(${fmtNum(centroid - left.position)})`);
       sumVert -= totalForce;
       sumMomAboutLeft -= totalForce * (centroid - left.position);
     }
 
     for (const m of moments) {
       const sign = m.direction === 'CW' ? '+' : '-';
-      sumMomTerms.push(`${sign} ${m.magnitude.toFixed(2)}`);
+      sumMomTerms.push(`${sign} ${fmtNum(m.magnitude)}`);
       sumMomAboutLeft += (m.direction === 'CW' ? 1 : -1) * m.magnitude;
     }
 
@@ -309,13 +317,13 @@ function generateReactionDerivation(
       equation: `R_L + R_R ${sumVertTerms.join(' ')} = 0` });
 
     steps.push({ label: 'ΣM_L = 0',
-      equation: `R_R(${dist.toFixed(2)}) ${sumMomTerms.join(' ')} = 0` });
+      equation: `R_R(${fmtNum(dist)}) ${sumMomTerms.join(' ')} = 0` });
 
     const rRightVert = -sumMomAboutLeft / dist;
     const rLeftVert = -sumVert - rRightVert;
 
-    steps.push({ label: 'R_R', equation: `R_R = ${rRightVert.toFixed(4)}` });
-    steps.push({ label: 'R_L', equation: `R_L = ${rLeftVert.toFixed(4)}` });
+    steps.push({ label: 'R_R', equation: `R_R = ${fmtNum(rRightVert, 4)}` });
+    steps.push({ label: 'R_L', equation: `R_L = ${fmtNum(rLeftVert, 4)}` });
 
     for (const s of sorted) {
       if (s.type === 'fixed') {
@@ -436,35 +444,50 @@ function generateSegmentDerivation(
         }
 
         if (sTerm) sTerm += ' ';
-        sTerm += `- \\left(\\frac{${fmtNumAbs(mSlope)}}{2}\\right)x^{2}`;
+        sTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}x^{2}`;
         if (mTerm) mTerm += ' ';
-        mTerm += `- \\left(\\frac{${fmtNumAbs(mSlope)}}{2}\\right)\\left(\\frac{x^{3}}{3}\\right)`;
+        mTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{x^{3}}{3}\\right)`;
         if (mfTerm) mfTerm += ' ';
-        mfTerm += `- \\left(\\frac{${fmtNumAbs(mSlope)}}{2}\\right)\\left(\\frac{x^{3}}{3}\\right)`;
+        mfTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{x^{3}}{3}\\right)`;
 
         shearTerms.push(sTerm);
         momentTerms.push(mTerm);
         momentFormulaTerms.push(mfTerm);
       }
     } else {
-      // Segment starts before the distributed load — use partial resultant
-      // for the overlapping portion (a to oEnd)
-      const wAtOStart = w1 + mSlope * (oStart - a);
-      const wAtOEnd = w1 + mSlope * (oEnd - a);
-      const partialForce = (wAtOStart + wAtOEnd) * dx / 2;
-      const denom = wAtOStart + wAtOEnd;
-      let centroidOffset: number;
-      if (Math.abs(denom) > 1e-10) {
-        centroidOffset = dx * (wAtOStart + 2 * wAtOEnd) / (3 * denom);
-      } else {
-        centroidOffset = dx / 2;
-      }
-      const centroid = oStart + centroidOffset;
-      const arm = centroid - segStart;
+      // Segment starts before the distributed load — the overlap starts at oStart = a
+      // Express formulas in terms of local x (measured from segment start)
+      // The load starts at x = a - segStart from the segment's origin
+      const loadOffset = a - segStart;
+      const hasConst = Math.abs(w1) > 1e-8;
+      const hasSlope = Math.abs(mSlope) > 1e-8;
 
-      shearTerms.push(`- ${fmtNumAbs(partialForce)}`);
-      momentTerms.push(`- ${fmtNumAbs(partialForce)}(${fmtNumAbs(arm)})`);
-      momentFormulaTerms.push(`- ${fmtNumAbs(partialForce)}(${fmtNumAbs(arm)})`);
+      // Shear: -w1*(x - offset) - (mSlope/2)*(x - offset)²
+      let sTerm = '';
+      if (hasConst) sTerm = `- (${fmtNumAbs(w1)})(x - ${fmtNumAbs(loadOffset)})`;
+      if (hasSlope) {
+        if (sTerm) sTerm += ' ';
+        sTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}(x - ${fmtNumAbs(loadOffset)})^{2}`;
+      }
+      if (sTerm) shearTerms.push(sTerm);
+
+      // Moment:
+      let mTerm = '';
+      if (hasConst) mTerm = `- (${fmtNumAbs(w1)})\\left(\\frac{(x - ${fmtNumAbs(loadOffset)})^{2}}{2}\\right)`;
+      if (hasSlope) {
+        if (mTerm) mTerm += ' ';
+        mTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{(x - ${fmtNumAbs(loadOffset)})^{3}}{3}\\right)`;
+      }
+      if (mTerm) momentTerms.push(mTerm);
+
+      // Moment formula:
+      let mfTerm = '';
+      if (hasConst) mfTerm = `- \\frac{${fmtNumAbs(w1)}}{2}(x - ${fmtNumAbs(loadOffset)})^{2}`;
+      if (hasSlope) {
+        if (mfTerm) mfTerm += ' ';
+        mfTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{(x - ${fmtNumAbs(loadOffset)})^{3}}{3}\\right)`;
+      }
+      if (mfTerm) momentFormulaTerms.push(mfTerm);
     }
   }
 
@@ -498,7 +521,10 @@ function generateSegmentDerivation(
   // Exact shear at segment boundaries matching the formula
   const shearLeftOfStart = computeInternalShearMoment(segStart, supports, pointLoads, moments, distributedLoads, reactions).shear;
   let vLeft = shearLeftOfStart;
-  for (const r of reactions) if (Math.abs(r.position - segStart) < 1e-8) vLeft += r.vertical;
+  for (const r of reactions) {
+    const sup = supports.find(s => s.id === r.supportId);
+    if (sup && Math.abs(sup.position - segStart) < 1e-8) vLeft += r.vertical;
+  }
   for (const p of pointLoads) if (Math.abs(p.position - segStart) < 1e-8) vLeft += pointLoadVertical(p);
   const vRight = computeInternalShearMoment(segEnd - 0.0001, supports, pointLoads, moments, distributedLoads, reactions).shear;
   const mLeft = computeInternalShearMoment(segStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions).moment;
@@ -511,8 +537,8 @@ function generateSegmentDerivation(
       result: shearResult,
       fullEquation: shearFullEq,
       xRange: [0, xDist],
-      atLeft: `x = 0 \\rightarrow V = ${cleanNumber(vLeft).toFixed(1)}`,
-      atRight: `x = ${xDist.toFixed(2)} \\rightarrow V = ${cleanNumber(vRight).toFixed(1)}`,
+      atLeft: `x = 0 \\rightarrow V = ${fmtNum(cleanNumber(vLeft), 1)}`,
+      atRight: `x = ${fmtNum(xDist)} \\rightarrow V = ${fmtNum(cleanNumber(vRight), 1)}`,
     },
     moment: {
       equation: momentEquation,
@@ -520,8 +546,8 @@ function generateSegmentDerivation(
       result: momentResult,
       fullEquation: momentFullEq,
       xRange: [0, xDist],
-      atLeft: `x = 0 \\rightarrow M = ${cleanNumber(mLeft).toFixed(1)}`,
-      atRight: `x = ${xDist.toFixed(2)} \\rightarrow M = ${cleanNumber(mRight).toFixed(1)}`,
+      atLeft: `x = 0 \\rightarrow M = ${fmtNum(cleanNumber(mLeft), 1)}`,
+      atRight: `x = ${fmtNum(xDist)} \\rightarrow M = ${fmtNum(cleanNumber(mRight), 1)}`,
     },
   };
 }
@@ -548,7 +574,8 @@ function generateSegments(
     ).shear;
     let vStart = shearLeftOfStart;
     for (const r of reactions) {
-      if (Math.abs(r.position - xStart) < 1e-8) vStart += r.vertical;
+      const sup = supports.find(s => s.id === r.supportId);
+      if (sup && Math.abs(sup.position - xStart) < 1e-8) vStart += r.vertical;
     }
     for (const p of pointLoads) {
       if (Math.abs(p.position - xStart) < 1e-8) vStart += pointLoadVertical(p);
@@ -647,21 +674,35 @@ export function solveBeam(
     if (p.moment < minMoment) minMoment = p.moment;
   }
 
-  // Find shear zero crossings directly from diagram points
-  // (catches all cases: distributed loads, point loads, supports, exact-zero points)
+  // Find shear zero crossings — only within segments, not across discontinuities
   const shearZeroCrossings: number[] = [];
-  for (let i = 0; i < diagramPoints.length - 1; i++) {
-    const p1 = diagramPoints[i];
-    const p2 = diagramPoints[i + 1];
-    const s1 = Math.abs(p1.shear) < 1e-10 ? 0 : p1.shear > 0 ? 1 : -1;
-    const s2 = Math.abs(p2.shear) < 1e-10 ? 0 : p2.shear > 0 ? 1 : -1;
-    if (s1 === s2) continue;
-    // Zero crossing detected — interpolate
-    const t = p1.shear / (p1.shear - p2.shear);
-    const x = p1.x + t * (p2.x - p1.x);
-    if (shearZeroCrossings.length === 0 || Math.abs(shearZeroCrossings[shearZeroCrossings.length - 1] - x) > 1e-6) {
-      shearZeroCrossings.push(x);
+  for (const seg of segments) {
+    if (!seg.distLoad) continue;
+    const shearSeg = computeInternalShearMoment(seg.start + 0.0001, supports, pointLoads, moments, distributedLoads, reactions).shear;
+    const shearEnd = computeInternalShearMoment(seg.end - 0.0001, supports, pointLoads, moments, distributedLoads, reactions).shear;
+    if (shearSeg * shearEnd < 0) {
+      // Zero crossing within this segment — binary search
+      let lo = seg.start + 0.0001;
+      let hi = seg.end - 0.0001;
+      let vLo = computeInternalShearMoment(lo, supports, pointLoads, moments, distributedLoads, reactions).shear;
+      for (let iter = 0; iter < 50; iter++) {
+        const mid = (lo + hi) / 2;
+        const vMid = computeInternalShearMoment(mid, supports, pointLoads, moments, distributedLoads, reactions).shear;
+        if (vLo * vMid > 0) { lo = mid; vLo = vMid; }
+        else hi = mid;
+      }
+      const xZero = (lo + hi) / 2;
+      if (shearZeroCrossings.length === 0 || Math.abs(shearZeroCrossings[shearZeroCrossings.length - 1] - xZero) > 1e-6) {
+        shearZeroCrossings.push(xZero);
+      }
     }
+  }
+
+  // Check extremum values at zero-shear points (where max/min moment typically occur)
+  for (const zx of shearZeroCrossings) {
+    const forces = computeInternalShearMoment(zx, supports, pointLoads, moments, distributedLoads, reactions);
+    if (forces.moment > maxMoment) maxMoment = forces.moment;
+    if (forces.moment < minMoment) minMoment = forces.moment;
   }
 
   return { reactions, diagramPoints, segments, maxShear, minShear, maxMoment, minMoment, shearZeroCrossings, reactionDerivation };

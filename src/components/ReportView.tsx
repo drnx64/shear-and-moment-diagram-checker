@@ -5,7 +5,7 @@ import LatexFormula from './LatexFormula';
 import FBDCanvas from './FBDCanvas';
 import DiagramOutput from './DiagramOutput';
 import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, BeamResult, LabeledPoint, UnitSystem } from '../types';
-import { UNIT_SYSTEMS } from '../types';
+import { UNIT_SYSTEMS, fmtNum } from '../types';
 
 function scrubModernCSS(doc: Document) {
   const replaceModernCSS = (css: string) =>
@@ -175,7 +175,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
         <div className="border-b border-slate-200 pb-4">
           <h2 className="text-lg font-bold text-slate-800">Beam Analysis Report</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Length: {beamLength.toFixed(2)} {U.length} &middot; Units: {unitSystem === 'metric' ? 'Metric (kN, m)' : 'Imperial (kips, ft)'} &middot;
+            Length: {fmtNum(beamLength)} {U.length} &middot; Units: {unitSystem === 'metric' ? 'Metric (kN, m)' : 'Imperial (kips, ft)'} &middot;
             Generated: {new Date().toLocaleString()}
           </p>
         </div>
@@ -186,25 +186,25 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
             <tbody>
               <tr className="border-b border-slate-100">
                 <td className="px-3 py-2 bg-slate-50 text-slate-500 w-48 font-medium">Beam Length</td>
-                <td className="px-3 py-2 text-slate-700">{beamLength.toFixed(2)} {U.length}</td>
+                <td className="px-3 py-2 text-slate-700">{fmtNum(beamLength)} {U.length}</td>
               </tr>
               <tr className="border-b border-slate-100">
                 <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Supports</td>
                 <td className="px-3 py-2 text-slate-700">
-                  {supports.map((s, i) => `${supportLabel(s, i)} @ ${s.position.toFixed(2)}${U.length}`).join(', ')}
+                  {supports.map((s, i) => `${supportLabel(s, i)} @ ${fmtNum(s.position)}${U.length}`).join(', ')}
                 </td>
               </tr>
               <tr className="border-b border-slate-100">
                 <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Reference Points</td>
                 <td className="px-3 py-2 text-slate-700">
-                  {labeledPoints.map(p => `${p.label} @ ${p.position.toFixed(2)}${U.length}`).join(', ')}
+                  {labeledPoints.map(p => `${p.label} @ ${fmtNum(p.position)}${U.length}`).join(', ')}
                 </td>
               </tr>
               {pointLoads.length > 0 && (
                 <tr className="border-b border-slate-100">
                   <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Point Loads</td>
                   <td className="px-3 py-2 text-slate-700">
-                    {pointLoads.map(p => `${p.magnitude.toFixed(1)} ${U.force} ${p.direction === 'up' ? '↑' : '↓'} @ ${p.position.toFixed(2)}${U.length}`).join('; ')}
+                    {pointLoads.map(p => `${fmtNum(p.magnitude, 1)} ${U.force} ${p.direction === 'up' ? '↑' : '↓'} @ ${fmtNum(p.position)}${U.length}`).join('; ')}
                   </td>
                 </tr>
               )}
@@ -212,7 +212,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
                 <tr className="border-b border-slate-100">
                   <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Concentrated Moments</td>
                   <td className="px-3 py-2 text-slate-700">
-                    {moments.map(m => `${m.magnitude.toFixed(1)} ${U.moment} ${m.direction} @ ${m.position.toFixed(2)}${U.length}`).join('; ')}
+                    {moments.map(m => `${fmtNum(m.magnitude, 1)} ${U.moment} ${m.direction} @ ${fmtNum(m.position)}${U.length}`).join('; ')}
                   </td>
                 </tr>
               )}
@@ -221,7 +221,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
                   <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Distributed Loads</td>
                   <td className="px-3 py-2 text-slate-700">
                     {distributedLoads.map(d =>
-                      `${d.startMag.toFixed(1)}-${d.endMag.toFixed(1)} ${U.distLoad} from ${d.startPos.toFixed(2)}${U.length} to ${d.endPos.toFixed(2)}${U.length}`
+                      `${fmtNum(d.startMag, 1)}-${fmtNum(d.endMag, 1)} ${U.distLoad} from ${fmtNum(d.startPos)}${U.length} to ${fmtNum(d.endPos)}${U.length}`
                     ).join('; ')}
                   </td>
                 </tr>
@@ -280,12 +280,12 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
                     return (
                       <tr key={r.id} className="border-t border-slate-100">
                         <td className={tdCls + " text-slate-700 font-medium"}>{supportLabel(sup, i)}</td>
-                        <td className={`${tdCls} text-right font-mono font-medium`} style={{ color: valColor(r.vertical) }}>{r.vertical.toFixed(2)}</td>
+                        <td className={`${tdCls} text-right font-mono font-medium`} style={{ color: valColor(r.vertical) }}>{fmtNum(r.vertical)}</td>
                         <td className={`${tdCls} text-right font-mono`} style={{ color: hasHoriz ? valColor(r.horizontal) : '#94a3b8' }}>
-                          {hasHoriz ? r.horizontal.toFixed(2) : '—'}
+                          {hasHoriz ? fmtNum(r.horizontal) : '—'}
                         </td>
                         <td className={`${tdCls} text-right font-mono`} style={{ color: hasMoment ? valColor(r.moment) : '#94a3b8' }}>
-                          {hasMoment ? r.moment.toFixed(2) : '—'}
+                          {hasMoment ? fmtNum(r.moment) : '—'}
                         </td>
                       </tr>
                     );
@@ -306,7 +306,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
                   <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
                     <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
                       <span className="text-[10px] font-medium bg-slate-200 text-slate-600 rounded px-1.5 py-0.5">{segName}</span>
-                      <span className="text-[10px] text-slate-400">({seg.start.toFixed(2)} → {seg.end.toFixed(2)} {U.length})</span>
+                      <span className="text-[10px] text-slate-400">({fmtNum(seg.start)} → {fmtNum(seg.end)} {U.length})</span>
                     </div>
                     <div className="p-3 space-y-2">
                       <div>
@@ -363,19 +363,19 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="border border-slate-200 rounded-lg p-3">
               <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Max Shear</div>
-              <div className="text-lg font-bold" style={{ color: valColor(result.maxShear) }}>{result.maxShear.toFixed(2)} {U.force}</div>
-            </div>
-            <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Min Shear</div>
-              <div className="text-lg font-bold" style={{ color: valColor(result.minShear) }}>{result.minShear.toFixed(2)} {U.force}</div>
-            </div>
-            <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Max Moment</div>
-              <div className="text-lg font-bold" style={{ color: valColor(result.maxMoment) }}>{result.maxMoment.toFixed(2)} {U.moment}</div>
-            </div>
-            <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Min Moment</div>
-              <div className="text-lg font-bold" style={{ color: valColor(result.minMoment) }}>{result.minMoment.toFixed(2)} {U.moment}</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.maxShear) }}>{fmtNum(result.maxShear)} {U.force}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Min Shear</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.minShear) }}>{fmtNum(result.minShear)} {U.force}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Max Moment</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.maxMoment) }}>{fmtNum(result.maxMoment)} {U.moment}</div>
+              </div>
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Min Moment</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.minMoment) }}>{fmtNum(result.minMoment)} {U.moment}</div>
             </div>
           </div>
         </section>

@@ -134,3 +134,10 @@ export interface LabeledPoint {
   label: string;
   type: 'support' | 'load' | 'moment' | 'dist' | 'end';
 }
+
+export function fmtNum(n: number, decimals = 2): string {
+  const factor = Math.pow(10, decimals);
+  const rounded = Math.round(n * factor) / factor;
+  if (Number.isInteger(rounded)) return String(rounded);
+  return rounded.toFixed(decimals);
+}

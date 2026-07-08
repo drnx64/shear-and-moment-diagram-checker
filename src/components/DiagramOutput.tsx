@@ -1,6 +1,6 @@
 import { type JSX, useState } from 'react';
 import type { DiagramPoint, LabeledPoint, UnitSystem } from '../types';
-import { UNIT_SYSTEMS } from '../types';
+import { UNIT_SYSTEMS, fmtNum } from '../types';
 
 interface Props {
   points: DiagramPoint[];
@@ -85,7 +85,7 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
             strokeWidth={isZero ? '1.5' : '1'}
             strokeDasharray={isZero ? '4,3' : 'none'} />
           <text x={MARGIN.left - 6} y={y + 3} textAnchor="end" fontSize="9" fill="#94a3b8">
-            {val.toFixed(1)}
+            {fmtNum(val, 1)}
           </text>
         </g>
       );
@@ -99,10 +99,10 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
       <g key={`xt-${pt.label}`}>
         <line x1={px} y1={MARGIN.top + DRAW_H} x2={px} y2={MARGIN.top + DRAW_H + 4} stroke="#94a3b8" strokeWidth="1" />
         <text x={px} y={MARGIN.top + DRAW_H + 14} textAnchor="middle" fontSize="11" fontWeight="600" fill="#475569" style={{ cursor: 'pointer' }}>
-          {pt.label}<title>x = {pt.position.toFixed(2)}{U.length}</title>
+          {pt.label}<title>x = {fmtNum(pt.position)}{U.length}</title>
         </text>
         <text x={px} y={MARGIN.top + DRAW_H + 26} textAnchor="middle" fontSize="8" fill="#94a3b8">
-          {pt.position.toFixed(2)}{U.length}
+          {fmtNum(pt.position)}{U.length}
         </text>
       </g>
     );
@@ -163,7 +163,7 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
                   const v = valueKey === 'shear' ? dp.shear : dp.moment;
                   const dpy = yScale(v, range);
                   const side = uniq.length > 1 ? (i === 0 ? 'left' : 'right') : '';
-                  const tipText = `${pt.label}${side ? ` (${side})` : ''}: ${prefix} = ${v.toFixed(2)} ${unit} @ x = ${pt.position.toFixed(2)}${U.length}`;
+                  const tipText = `${pt.label}${side ? ` (${side})` : ''}: ${prefix} = ${fmtNum(v)} ${unit} @ x = ${fmtNum(pt.position)}${U.length}`;
                   const labelY = uniq.length > 1 ? dpy + (i === 0 ? -10 : 12) : dpy - 6;
                   return (
                     <g key={i}>
@@ -178,7 +178,7 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
                       />
                       <text x={px + 8} y={labelY} textAnchor="start" fontSize="9"
                         fill={valColor(v)} fontWeight="700" opacity="0.9" style={{ cursor: 'pointer' }}>
-                        {v.toFixed(1)}
+                        {fmtNum(v, 1)}
                       </text>
                     </g>
                   );
@@ -196,7 +196,7 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
               <line x1={z.px} y1={z.py - 6} x2={z.px} y2={z.py + 6} stroke="#dc2626" strokeWidth="1.5" />
               <circle cx={z.px} cy={z.py} r="3" fill="#dc2626" />
               <text x={z.px + 6} y={z.py - 4} fontSize="9" fill="#dc2626" fontWeight="bold">
-                x = {z.distance.toFixed(2)} {U.length} {z.label ? `from ${z.label}` : ''}
+                x = {fmtNum(z.distance)} {U.length} {z.label ? `from ${z.label}` : ''}
               </text>
             </g>
           ))}
@@ -215,8 +215,8 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
           </div>
         )}
         <div className="flex items-center gap-4 px-4 py-1.5 border-t border-slate-100 text-[10px]">
-          <span>{prefix}<sub>max</sub> = <span className={`font-bold ${valColorClass(maxVal)}`}>{maxVal.toFixed(2)}</span> {unit}</span>
-          <span>{prefix}<sub>min</sub> = <span className={`font-bold ${valColorClass(minVal)}`}>{minVal.toFixed(2)}</span> {unit}</span>
+          <span>{prefix}<sub>max</sub> = <span className={`font-bold ${valColorClass(maxVal)}`}>{fmtNum(maxVal)}</span> {unit}</span>
+          <span>{prefix}<sub>min</sub> = <span className={`font-bold ${valColorClass(minVal)}`}>{fmtNum(minVal)}</span> {unit}</span>
         </div>
       </div>
     );

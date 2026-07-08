@@ -1,6 +1,6 @@
 import LatexFormula from './LatexFormula';
 import type { SegmentInfo, Reaction, BeamSupport, UnitSystem, ReactionDerivationStep } from '../types';
-import { UNIT_SYSTEMS } from '../types';
+import { UNIT_SYSTEMS, fmtNum } from '../types';
 
 interface Props {
   segments: SegmentInfo[];
@@ -83,13 +83,13 @@ export default function ResultsTable({ segments, reactions, supports, unitSystem
                     <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50/50">
                       <td className={tdCls + " text-slate-700 font-medium"}>{supportLabel(sup, i)}</td>
                       <td className={tdCls + " text-slate-500 capitalize"}>{sup.type}</td>
-                      <td className={`${tdCls} text-right text-slate-500`}>{sup.position.toFixed(2)}</td>
-                      <td className={`${tdCls} text-right font-mono font-medium ${valColorClass(r.vertical)}`}>{r.vertical.toFixed(2)}</td>
+                      <td className={`${tdCls} text-right text-slate-500`}>{fmtNum(sup.position)}</td>
+                      <td className={`${tdCls} text-right font-mono font-medium ${valColorClass(r.vertical)}`}>{fmtNum(r.vertical)}</td>
                       <td className={`${tdCls} text-right font-mono font-medium ${hasHoriz ? valColorClass(r.horizontal) : 'text-slate-300'}`}>
-                        {hasHoriz ? r.horizontal.toFixed(2) : '—'}
+                        {hasHoriz ? fmtNum(r.horizontal) : '—'}
                       </td>
                       <td className={`${tdCls} text-right font-mono font-medium ${hasMoment ? valColorClass(r.moment) : 'text-slate-300'}`}>
-                        {hasMoment ? r.moment.toFixed(2) : '—'}
+                        {hasMoment ? fmtNum(r.moment) : '—'}
                       </td>
                     </tr>
                   );
@@ -110,7 +110,7 @@ export default function ResultsTable({ segments, reactions, supports, unitSystem
                 <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
                   <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
                     <span className="text-[10px] font-medium bg-slate-200 text-slate-600 rounded px-1.5 py-0.5">{segName}</span>
-                    <span className="text-[10px] text-slate-400">({seg.start.toFixed(2)} → {seg.end.toFixed(2)} {U.length})</span>
+                    <span className="text-[10px] text-slate-400">({fmtNum(seg.start)} → {fmtNum(seg.end)} {U.length})</span>
                   </div>
                   <div className="p-3 space-y-2">
                     <div>
@@ -159,22 +159,22 @@ export default function ResultsTable({ segments, reactions, supports, unitSystem
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-slate-50 rounded-lg p-3">
               <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">V<sub>max</sub> (Max Shear)</div>
-              <div className={`text-lg font-bold tabular-nums ${valColorClass(maxShear)}`}>{maxShear.toFixed(2)}</div>
+              <div className={`text-lg font-bold tabular-nums ${valColorClass(maxShear)}`}>{fmtNum(maxShear)}</div>
               <div className="text-[10px] text-slate-400">{U.force}</div>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
               <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">V<sub>min</sub> (Min Shear)</div>
-              <div className={`text-lg font-bold tabular-nums ${valColorClass(minShear)}`}>{minShear.toFixed(2)}</div>
+              <div className={`text-lg font-bold tabular-nums ${valColorClass(minShear)}`}>{fmtNum(minShear)}</div>
               <div className="text-[10px] text-slate-400">{U.force}</div>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
               <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">M<sub>max</sub> (Max Moment)</div>
-              <div className={`text-lg font-bold tabular-nums ${valColorClass(maxMoment)}`}>{maxMoment.toFixed(2)}</div>
+              <div className={`text-lg font-bold tabular-nums ${valColorClass(maxMoment)}`}>{fmtNum(maxMoment)}</div>
               <div className="text-[10px] text-slate-400">{U.moment}</div>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
               <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">M<sub>min</sub> (Min Moment)</div>
-              <div className={`text-lg font-bold tabular-nums ${valColorClass(minMoment)}`}>{minMoment.toFixed(2)}</div>
+              <div className={`text-lg font-bold tabular-nums ${valColorClass(minMoment)}`}>{fmtNum(minMoment)}</div>
               <div className="text-[10px] text-slate-400">{U.moment}</div>
             </div>
           </div>

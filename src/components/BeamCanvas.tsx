@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, Reaction, LabeledPoint, UnitSystem } from '../types';
-import { UNIT_SYSTEMS } from '../types';
+import { UNIT_SYSTEMS, fmtNum } from '../types';
 
 interface Props {
   beamLength: number;
@@ -133,11 +133,11 @@ export default function BeamCanvas({ beamLength, supports, pointLoads, moments, 
                 );
               })}
               <text x={x1} y={p1 - 6} textAnchor="middle" fontSize="9" fill="#14b8a6" fontWeight="600">
-                {d.startMag.toFixed(1)} {U.force}/{U.length}
+                {fmtNum(d.startMag, 1)} {U.force}/{U.length}
               </text>
               {Math.abs(d.endMag - d.startMag) > 1e-6 && (
                 <text x={x2} y={p2 - 6} textAnchor="middle" fontSize="9" fill="#14b8a6" fontWeight="600">
-                  {d.endMag.toFixed(1)} {U.force}/{U.length}
+                  {fmtNum(d.endMag, 1)} {U.force}/{U.length}
                 </text>
               )}
             </g>
@@ -161,7 +161,7 @@ export default function BeamCanvas({ beamLength, supports, pointLoads, moments, 
             <g key={p.id}>
               <line x1={tailX} y1={tailY} x2={tipX} y2={tipY} stroke={loadColor} strokeWidth="2.5" markerEnd="url(#pt-arrow)" />
               <text x={tipX + 6} y={tipY + 4} fontSize="10" fill={loadColor} fontWeight="600">
-                {p.magnitude.toFixed(1)} {U.force}
+                {fmtNum(p.magnitude, 1)} {U.force}
               </text>
             </g>
           );
@@ -181,7 +181,7 @@ export default function BeamCanvas({ beamLength, supports, pointLoads, moments, 
                   : `${x - r + 3},${BEAM_TOP - 19} ${x - r - 5},${BEAM_TOP - 16} ${x - r + 3},${BEAM_TOP - 13}`
               } fill="#a855f7" />
               <text x={x} y={BEAM_TOP - 28} textAnchor="middle" fontSize="9" fill="#a855f7" fontWeight="600">
-                M = {m.magnitude.toFixed(1)} {U.moment}
+                M = {fmtNum(m.magnitude, 1)} {U.moment}
               </text>
             </g>
           );
@@ -216,7 +216,7 @@ export default function BeamCanvas({ beamLength, supports, pointLoads, moments, 
               const dist = next.position - pt.position;
               return (
                 <text key={i} x={mid} y={DIM_Y + 14} textAnchor="middle" fontSize="8" fill="#94a3b8">
-                  {dist.toFixed(2)} {U.length}
+                  {fmtNum(dist)} {U.length}
                 </text>
               );
             })}
