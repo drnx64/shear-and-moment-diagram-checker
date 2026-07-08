@@ -33,18 +33,6 @@ function buildFillPath(points: DiagramPoint[], getY: (pt: DiagramPoint) => numbe
   return d;
 }
 
-function getValuesAtLabeledPoints(points: DiagramPoint[], labeledPoints: LabeledPoint[]): Map<string, { shear: number; moment: number }> {
-  const map = new Map<string, { shear: number; moment: number }>();
-  for (const lp of labeledPoints) {
-    const atPos = points.filter(p => Math.abs(p.x - lp.position) < 1e-8);
-    if (atPos.length > 0) {
-      const pt = atPos[atPos.length - 1];
-      map.set(lp.label, { shear: pt.shear, moment: pt.moment });
-    }
-  }
-  return map;
-}
-
 function valColor(val: number): string {
   if (val > 0.001) return '#16a34a';
   if (val < -0.001) return '#dc2626';
@@ -74,8 +62,6 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
 
   const shearRange = Math.max(Math.abs(maxShear), Math.abs(minShear), 1);
   const momentRange = Math.max(Math.abs(maxMoment), Math.abs(minMoment), 1);
-
-  const pointValues = getValuesAtLabeledPoints(points, labeledPoints);
 
   const shearZeroAnnotations = shearZeroCrossings.map(pos => {
     const leftPt = labeledPoints
@@ -166,34 +152,41 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
           {valueKey && labeledPoints.map(pt => {
             const allAtPos = points.filter(p => Math.abs(p.x - pt.position) < 1e-8);
             if (allAtPos.length === 0) return null;
-            const last = allAtPos[allAtPos.length - 1];
-            const val = valueKey === 'shear' ? last.shear : last.moment;
             const px = toX(pt.position);
-            const py = yScale(val, range);
-            const labelW = `${val.toFixed(1)}`.length * 5 + 8;
-            const offsetX = px > MARGIN.left + DRAW_W - labelW ? -(labelW + 4) : 4;
+            const seen = new Set<string>();
+            const uniq = allAtPos.filter(dp => {
+              const v = valueKey === 'shear' ? dp.shear : dp.moment;
+              const key = `${Math.round(v * 10)}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
             return (
               <g key={`pv-${pt.label}`}>
-                {allAtPos.map((dp, i) => {
+                {uniq.map((dp, i) => {
                   const v = valueKey === 'shear' ? dp.shear : dp.moment;
                   const dpy = yScale(v, range);
-                  const side = allAtPos.length > 1 ? (i === 0 ? 'left' : 'right') : '';
+                  const side = uniq.length > 1 ? (i === 0 ? 'left' : 'right') : '';
                   const tipText = `${pt.label}${side ? ` (${side})` : ''}: ${prefix} = ${v.toFixed(2)} ${unit} @ x = ${pt.position.toFixed(2)}${U.length}`;
+                  const labelY = uniq.length > 1 ? dpy + (i === 0 ? -10 : 12) : dpy - 6;
                   return (
-                    <circle key={i} cx={px} cy={dpy} r="4" fill={color} stroke="white" strokeWidth="2" opacity="0.85"
-                      style={{ cursor: 'pointer' }}
-                      onMouseEnter={e => {
-                        const r = (e.currentTarget as SVGCircleElement).getBoundingClientRect();
-                        const c = (e.currentTarget as SVGCircleElement).closest('svg')!.getBoundingClientRect();
-                        setTip({ text: tipText, x: r.left - c.left + 10, y: r.top - c.top - 8 });
-                      }}
-                      onMouseLeave={() => setTip(null)}
-                    />
+                    <g key={i}>
+                      <circle cx={px} cy={dpy} r="4" fill={color} stroke="white" strokeWidth="2" opacity="0.85"
+                        style={{ cursor: 'pointer' }}
+                        onMouseEnter={e => {
+                          const r = (e.currentTarget as SVGCircleElement).getBoundingClientRect();
+                          const c = (e.currentTarget as SVGCircleElement).closest('svg')!.getBoundingClientRect();
+                          setTip({ text: tipText, x: r.left - c.left + 10, y: r.top - c.top - 8 });
+                        }}
+                        onMouseLeave={() => setTip(null)}
+                      />
+                      <text x={px + 8} y={labelY} textAnchor="start" fontSize="9"
+                        fill={valColor(v)} fontWeight="700" opacity="0.9" style={{ cursor: 'pointer' }}>
+                        {v.toFixed(1)}
+                      </text>
+                    </g>
                   );
                 })}
-                <text x={px + offsetX} y={py - 4} textAnchor={offsetX < 0 ? 'end' : 'start'} fontSize="9" fill={valColor(val)} fontWeight="700" opacity="0.9" style={{ cursor: 'pointer' }}>
-                  {val.toFixed(1)}
-                </text>
               </g>
             );
           })}
