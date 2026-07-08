@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import LatexFormula from './LatexFormula';
@@ -6,6 +6,28 @@ import FBDCanvas from './FBDCanvas';
 import DiagramOutput from './DiagramOutput';
 import type { BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad, BeamResult, LabeledPoint, UnitSystem } from '../types';
 import { UNIT_SYSTEMS } from '../types';
+
+function scrubModernCSS(doc: Document) {
+  const replaceModernCSS = (css: string) =>
+    css
+      .replace(/color-mix\([^)]*\)/g, '#64748b')
+      .replace(/oklch\([^)]*\)/g, '#64748b')
+      .replace(/oklab\([^)]*\)/g, '#64748b');
+  doc.querySelectorAll('style').forEach(el => {
+    el.textContent = replaceModernCSS(el.textContent || '');
+  });
+  doc.querySelectorAll('[style]').forEach(el => {
+    const inline = (el as HTMLElement).getAttribute('style') || '';
+    (el as HTMLElement).setAttribute('style', replaceModernCSS(inline));
+  });
+  doc.querySelectorAll('svg').forEach(svg => {
+    if (!svg.getAttribute('width')) svg.setAttribute('width', '800');
+    if (!svg.getAttribute('height') || svg.getAttribute('height') === '0') svg.setAttribute('height', '300');
+  });
+  doc.querySelectorAll('.katex-html').forEach(el => {
+    (el as HTMLElement).style.display = 'inline';
+  });
+}
 
 interface Props {
   beamLength: number;
@@ -24,6 +46,12 @@ function supportLabel(sup: BeamSupport, index: number): string {
   return `${side} ${sup.type === 'pin' ? 'Pin' : 'Roller'}`;
 }
 
+function valColor(val: number): string {
+  if (val > 0.001) return '#16a34a';
+  if (val < -0.001) return '#dc2626';
+  return '#64748b';
+}
+
 export default function ReportView({ beamLength, supports, pointLoads, moments, distributedLoads, result, labeledPoints, unitSystem }: Props) {
   const U = UNIT_SYSTEMS[unitSystem];
   const reportRef = useRef<HTMLDivElement>(null);
@@ -39,7 +67,42 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
   }
 
   const thCls = "px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200";
-  const tdCls = "px-3 py-2 text-sm align-top";
+  const tdCls = "px-3 py-2 text-xs align-top";
+
+  const captureAsImage = useCallback(async (format: 'png' | 'jpeg') => {
+    if (!reportRef.current) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      const svgs = reportRef.current.querySelectorAll('svg');
+      svgs.forEach(svg => {
+        const bbox = svg.getBoundingClientRect();
+        if (!svg.getAttribute('width') || svg.getAttribute('width') === '0') {
+          svg.setAttribute('width', String(bbox.width || 800));
+        }
+        if (!svg.getAttribute('height') || svg.getAttribute('height') === '0') {
+          svg.setAttribute('height', String(bbox.height || 300));
+        }
+      });
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+        onclone: scrubModernCSS,
+      });
+      const link = document.createElement('a');
+      link.download = `beam-analysis.${format === 'jpeg' ? 'jpg' : 'png'}`;
+      link.href = canvas.toDataURL(`image/${format === 'jpeg' ? 'jpeg' : 'png'}`, format === 'jpeg' ? 0.92 : undefined);
+      link.click();
+    } catch (err) {
+      setError('Image generation failed.');
+      console.error('Image generation error:', err);
+    } finally {
+      setDownloading(false);
+    }
+  }, []);
 
   async function handleDownloadPDF() {
     if (!reportRef.current) return;
@@ -63,23 +126,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
         allowTaint: false,
         backgroundColor: '#ffffff',
         logging: false,
-        onclone: (doc) => {
-          doc.querySelectorAll('style').forEach(el => {
-            let css = el.textContent || '';
-            css = css.replace(/color-mix\([^)]*\)/g, '#64748b');
-            css = css.replace(/oklch\([^)]*\)/g, '#64748b');
-            css = css.replace(/oklab\([^)]*\)/g, '#64748b');
-            el.textContent = css;
-          });
-          const clonedSvgs = doc.querySelectorAll('svg');
-          clonedSvgs.forEach(svg => {
-            if (!svg.getAttribute('width')) svg.setAttribute('width', '800');
-            if (!svg.getAttribute('height')) svg.setAttribute('height', '300');
-          });
-          doc.querySelectorAll('.katex-html').forEach(el => {
-            (el as HTMLElement).style.display = 'inline';
-          });
-        },
+        onclone: scrubModernCSS,
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -122,53 +169,62 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
     }
   }
 
+  function FormatVal({ val, fmt }: { val: number; fmt?: string }) {
+    const formatted = val.toFixed(fmt ? parseInt(fmt) : 2);
+    const prefix = val > 0.001 ? '+' : val < -0.001 ? '' : '';
+    return <span className="font-medium">{prefix}{formatted}</span>;
+  }
+
   return (
     <div>
-      <div ref={reportRef} className="space-y-6 bg-white">
-        <div className="border-b border-slate-200 pb-3">
-          <h2 className="text-base font-bold text-slate-800">Calculation Report</h2>
-          <p className="text-xs text-slate-500 mt-1">Units: {unitSystem === 'metric' ? 'Metric (kN, m)' : 'Imperial (kips, ft)'}</p>
+      <div ref={reportRef} className="space-y-6 bg-white" style={{ width: '816px', margin: '0 auto' }}>
+        <div className="border-b border-slate-200 pb-4">
+          <h2 className="text-lg font-bold text-slate-800">Beam Analysis Report</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Length: {beamLength.toFixed(2)} {U.length} &middot; Units: {unitSystem === 'metric' ? 'Metric (kN, m)' : 'Imperial (kips, ft)'} &middot;
+            Generated: {new Date().toLocaleString()}
+          </p>
         </div>
 
         <section>
-          <h3 className="text-sm font-bold text-slate-700 mb-2">1. Beam Configuration</h3>
-          <table className="w-full text-xs border-collapse">
+          <h3 className="text-sm font-bold text-slate-700 mb-2">1. Configuration Summary</h3>
+          <table className="w-full text-xs border-collapse border border-slate-200 rounded-lg overflow-hidden">
             <tbody>
-              <tr className="border-t border-slate-100">
-                <td className="px-3 py-2 text-slate-500 w-40 font-medium">Beam Length</td>
+              <tr className="border-b border-slate-100">
+                <td className="px-3 py-2 bg-slate-50 text-slate-500 w-48 font-medium">Beam Length</td>
                 <td className="px-3 py-2 text-slate-700">{beamLength.toFixed(2)} {U.length}</td>
               </tr>
-              <tr className="border-t border-slate-100">
-                <td className="px-3 py-2 text-slate-500 font-medium">Supports</td>
+              <tr className="border-b border-slate-100">
+                <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Supports</td>
                 <td className="px-3 py-2 text-slate-700">
                   {supports.map((s, i) => `${supportLabel(s, i)} @ ${s.position.toFixed(2)}${U.length}`).join(', ')}
                 </td>
               </tr>
-              <tr className="border-t border-slate-100">
-                <td className="px-3 py-2 text-slate-500 font-medium">Reference Points</td>
+              <tr className="border-b border-slate-100">
+                <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Reference Points</td>
                 <td className="px-3 py-2 text-slate-700">
                   {labeledPoints.map(p => `${p.label} @ ${p.position.toFixed(2)}${U.length}`).join(', ')}
                 </td>
               </tr>
               {pointLoads.length > 0 && (
-                <tr className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-500 font-medium">Point Loads</td>
+                <tr className="border-b border-slate-100">
+                  <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Point Loads</td>
                   <td className="px-3 py-2 text-slate-700">
                     {pointLoads.map(p => `${p.magnitude.toFixed(1)} ${U.force} ${p.direction === 'up' ? '↑' : '↓'} @ ${p.position.toFixed(2)}${U.length}`).join('; ')}
                   </td>
                 </tr>
               )}
               {moments.length > 0 && (
-                <tr className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-500 font-medium">Concentrated Moments</td>
+                <tr className="border-b border-slate-100">
+                  <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Concentrated Moments</td>
                   <td className="px-3 py-2 text-slate-700">
                     {moments.map(m => `${m.magnitude.toFixed(1)} ${U.moment} ${m.direction} @ ${m.position.toFixed(2)}${U.length}`).join('; ')}
                   </td>
                 </tr>
               )}
               {distributedLoads.length > 0 && (
-                <tr className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-500 font-medium">Distributed Loads</td>
+                <tr>
+                  <td className="px-3 py-2 bg-slate-50 text-slate-500 font-medium">Distributed Loads</td>
                   <td className="px-3 py-2 text-slate-700">
                     {distributedLoads.map(d =>
                       `${d.startMag.toFixed(1)}-${d.endMag.toFixed(1)} ${U.distLoad} from ${d.startPos.toFixed(2)}${U.length} to ${d.endPos.toFixed(2)}${U.length}`
@@ -181,7 +237,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
         </section>
 
         <section>
-          <h3 className="text-sm font-bold text-slate-700 mb-2">2. Beam Diagram</h3>
+          <h3 className="text-sm font-bold text-slate-700 mb-2">2. Free Body Diagram</h3>
           <FBDCanvas
             beamLength={beamLength}
             supports={supports}
@@ -194,9 +250,23 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
           />
         </section>
 
+        {result.reactionDerivation.length > 0 && (
+          <section>
+            <h3 className="text-sm font-bold text-slate-700 mb-2">3. Reaction Solution</h3>
+            <div className="border border-slate-200 rounded-lg p-3 space-y-1.5">
+              {result.reactionDerivation.map((step, i) => (
+                <div key={i} className="flex items-start gap-3 text-xs">
+                  <span className="text-[10px] font-medium text-slate-400 uppercase w-24 shrink-0 pt-0.5">{step.label}</span>
+                  <div className="font-mono text-slate-700"><LatexFormula formula={step.equation} /></div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {result.reactions.length > 0 && (
           <section>
-            <h3 className="text-sm font-bold text-slate-700 mb-2">3. Support Reactions</h3>
+            <h3 className="text-sm font-bold text-slate-700 mb-2">4. Support Reactions</h3>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-xs border-collapse">
                 <thead>
@@ -211,12 +281,18 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
                   {result.reactions.map((r, i) => {
                     const sup = supports.find(s => s.id === r.supportId);
                     if (!sup) return null;
+                    const hasHoriz = sup.type === 'pin' || sup.type === 'fixed';
+                    const hasMoment = sup.type === 'fixed';
                     return (
                       <tr key={r.id} className="border-t border-slate-100">
-                        <td className={tdCls + " text-slate-700"}>{supportLabel(sup, i)}</td>
-                        <td className={`${tdCls} text-right font-mono text-blue-700 font-medium`}>{r.vertical.toFixed(2)}</td>
-                        <td className={`${tdCls} text-right font-mono text-slate-500`}>{r.horizontal.toFixed(2)}</td>
-                        <td className={`${tdCls} text-right font-mono text-slate-500`}>{r.moment.toFixed(2)}</td>
+                        <td className={tdCls + " text-slate-700 font-medium"}>{supportLabel(sup, i)}</td>
+                        <td className={`${tdCls} text-right font-mono font-medium`} style={{ color: valColor(r.vertical) }}>{r.vertical.toFixed(2)}</td>
+                        <td className={`${tdCls} text-right font-mono`} style={{ color: hasHoriz ? valColor(r.horizontal) : '#94a3b8' }}>
+                          {hasHoriz ? r.horizontal.toFixed(2) : '—'}
+                        </td>
+                        <td className={`${tdCls} text-right font-mono`} style={{ color: hasMoment ? valColor(r.moment) : '#94a3b8' }}>
+                          {hasMoment ? r.moment.toFixed(2) : '—'}
+                        </td>
                       </tr>
                     );
                   })}
@@ -227,68 +303,53 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
         )}
 
         {result.segments.length > 0 && (
-          <section style={{ display: 'none' }}>
-            <h3 className="text-sm font-bold text-slate-700 mb-2">4. Segment Equations (Equilibrium Method)</h3>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50">
-                    <th className={thCls}>Segment</th>
-                    <th className={thCls}>Shear — ΣF<sub>y</sub> = 0 (↑+)</th>
-                    <th className={thCls}>Moment — ΣM<sub>cut</sub> = 0 (clockwise +)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.segments.map((seg, i) => (
-                    <tr key={i} className="border-t border-slate-100">
-                      <td className={`${tdCls} text-slate-600 font-mono whitespace-nowrap`}>
-                        {String.fromCharCode(65 + i)}–{String.fromCharCode(66 + i)}
-                      </td>
-                      <td className={tdCls + " text-orange-700"}>
+          <section>
+            <h3 className="text-sm font-bold text-slate-700 mb-2">5. Segment Equations (Equilibrium Method)</h3>
+            <div className="space-y-3">
+              {result.segments.map((seg, i) => {
+                const segName = `${String.fromCharCode(65 + i)} → ${String.fromCharCode(66 + i)}`;
+                return (
+                  <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                      <span className="text-[10px] font-medium bg-slate-200 text-slate-600 rounded px-1.5 py-0.5">{segName}</span>
+                      <span className="text-[10px] text-slate-400">({seg.start.toFixed(2)} → {seg.end.toFixed(2)} {U.length})</span>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <div>
+                        <div className="text-[10px] text-slate-500 mb-0.5 font-medium">Shear</div>
                         {seg.derivation ? (
                           <div className="space-y-1">
-                            <div className="font-mono text-[11px]">
-                              <LatexFormula formula={seg.derivation.shear.equation} />
-                            </div>
-                            <div className="font-mono text-[11px] text-orange-600/80">
-                              <LatexFormula formula={seg.derivation.shear.fullEquation} />
-                            </div>
-                            <div className="font-mono text-[11px] font-medium">
-                              <LatexFormula formula={seg.shearFormula} />
-                            </div>
+                            <div className="font-mono text-[11px] text-slate-500"><LatexFormula formula={seg.derivation.shear.equation} /></div>
+                            <div className="font-mono text-[11px] text-orange-600/80"><LatexFormula formula={seg.derivation.shear.fullEquation} /></div>
+                            <div className="font-mono text-xs font-semibold bg-slate-50 rounded px-2 py-1"><LatexFormula formula={seg.shearFormula} /></div>
                           </div>
                         ) : (
-                          <LatexFormula formula={seg.shearFormula} />
+                          <div className="font-mono text-xs font-medium"><LatexFormula formula={seg.shearFormula} /></div>
                         )}
-                      </td>
-                      <td className={tdCls + " text-blue-700"}>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 mb-0.5 font-medium">Moment</div>
                         {seg.derivation ? (
                           <div className="space-y-1">
-                            <div className="font-mono text-[11px]">
-                              <LatexFormula formula={seg.derivation.moment.equation} />
-                            </div>
-                            <div className="font-mono text-[11px] text-blue-600/80">
-                              <LatexFormula formula={seg.derivation.moment.fullEquation} />
-                            </div>
-                            <div className="font-mono text-[11px] font-medium">
-                              <LatexFormula formula={seg.momentFormula} />
-                            </div>
+                            <div className="font-mono text-[11px] text-slate-500"><LatexFormula formula={seg.derivation.moment.equation} /></div>
+                            <div className="font-mono text-[11px] text-blue-600/80"><LatexFormula formula={seg.derivation.moment.fullEquation} /></div>
+                            <div className="font-mono text-xs font-semibold bg-slate-50 rounded px-2 py-1"><LatexFormula formula={seg.momentFormula} /></div>
                           </div>
                         ) : (
-                          <LatexFormula formula={seg.momentFormula} />
+                          <div className="font-mono text-xs font-medium"><LatexFormula formula={seg.momentFormula} /></div>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
 
         {result.diagramPoints.length > 0 && (
           <section>
-            <h3 className="text-sm font-bold text-slate-700 mb-2">5. Shear & Moment Diagrams</h3>
+            <h3 className="text-sm font-bold text-slate-700 mb-2">6. Shear &amp; Moment Diagrams</h3>
             <DiagramOutput
               points={result.diagramPoints}
               maxShear={result.maxShear}
@@ -304,39 +365,49 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
         )}
 
         <section>
-          <h3 className="text-sm font-bold text-slate-700 mb-2">6. Summary of Extremes</h3>
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-xs border-collapse">
-              <tbody>
-                <tr className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-500 w-40 font-medium">Max Shear</td>
-                  <td className="px-3 py-2 text-orange-700 font-mono font-medium">{result.maxShear.toFixed(2)} {U.force}</td>
-                </tr>
-                <tr className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-500 font-medium">Min Shear</td>
-                  <td className="px-3 py-2 text-orange-700 font-mono font-medium">{result.minShear.toFixed(2)} {U.force}</td>
-                </tr>
-                <tr className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-500 font-medium">Max Moment</td>
-                  <td className="px-3 py-2 text-blue-700 font-mono font-medium">{result.maxMoment.toFixed(2)} {U.moment}</td>
-                </tr>
-                <tr className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-500 font-medium">Min Moment</td>
-                  <td className="px-3 py-2 text-blue-700 font-mono font-medium">{result.minMoment.toFixed(2)} {U.moment}</td>
-                </tr>
-              </tbody>
-            </table>
+            <h3 className="text-sm font-bold text-slate-700 mb-2">7. Extreme Values Summary</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="border border-slate-200 rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Max Shear</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.maxShear) }}>{result.maxShear.toFixed(2)} {U.force}</div>
+            </div>
+            <div className="border border-slate-200 rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Min Shear</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.minShear) }}>{result.minShear.toFixed(2)} {U.force}</div>
+            </div>
+            <div className="border border-slate-200 rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Max Moment</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.maxMoment) }}>{result.maxMoment.toFixed(2)} {U.moment}</div>
+            </div>
+            <div className="border border-slate-200 rounded-lg p-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Min Moment</div>
+              <div className="text-lg font-bold" style={{ color: valColor(result.minMoment) }}>{result.minMoment.toFixed(2)} {U.moment}</div>
+            </div>
           </div>
         </section>
       </div>
 
-      <div className="flex items-center gap-3 pt-4 no-print">
+      <div className="flex items-center gap-3 pt-4 no-print flex-wrap">
         <button
           onClick={handleDownloadPDF}
           disabled={downloading}
           className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
         >
-          {downloading ? 'Generating PDF...' : 'Download PDF Report'}
+          {downloading ? 'Generating...' : 'Download PDF'}
+        </button>
+        <button
+          onClick={() => captureAsImage('png')}
+          disabled={downloading}
+          className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
+        >
+          {downloading ? 'Generating...' : 'Save as PNG'}
+        </button>
+        <button
+          onClick={() => captureAsImage('jpeg')}
+          disabled={downloading}
+          className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 rounded-md hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
+        >
+          {downloading ? 'Generating...' : 'Save as JPG'}
         </button>
         {error && (
           <div className="flex items-center gap-2">
@@ -345,7 +416,7 @@ export default function ReportView({ beamLength, supports, pointLoads, moments, 
               onClick={() => window.print()}
               className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-md hover:bg-slate-50"
             >
-              Print (Save as PDF)
+              Print
             </button>
           </div>
         )}

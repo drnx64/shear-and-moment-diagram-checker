@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import { type JSX, useState } from 'react';
 import type { DiagramPoint, LabeledPoint, UnitSystem } from '../types';
 import { UNIT_SYSTEMS } from '../types';
 
@@ -33,10 +33,34 @@ function buildFillPath(points: DiagramPoint[], getY: (pt: DiagramPoint) => numbe
   return d;
 }
 
+function getValuesAtLabeledPoints(points: DiagramPoint[], labeledPoints: LabeledPoint[]): Map<string, { shear: number; moment: number }> {
+  const map = new Map<string, { shear: number; moment: number }>();
+  for (const lp of labeledPoints) {
+    const atPos = points.filter(p => Math.abs(p.x - lp.position) < 1e-8);
+    if (atPos.length > 0) {
+      const pt = atPos[atPos.length - 1];
+      map.set(lp.label, { shear: pt.shear, moment: pt.moment });
+    }
+  }
+  return map;
+}
+
+function valColor(val: number): string {
+  if (val > 0.001) return '#16a34a';
+  if (val < -0.001) return '#dc2626';
+  return '#64748b';
+}
+
+function valColorClass(val: number): string {
+  if (val > 0.001) return 'text-green-600';
+  if (val < -0.001) return 'text-red-600';
+  return 'text-slate-500';
+}
+
 export default function DiagramOutput({ points, maxShear, minShear, maxMoment, minMoment, beamLength, labeledPoints, shearZeroCrossings, unitSystem }: Props) {
   const U = UNIT_SYSTEMS[unitSystem];
-  const W = 700, H = 200;
-  const MARGIN = { top: 20, right: 20, bottom: 40, left: 60 };
+  const W = 700, H = 220;
+  const MARGIN = { top: 24, right: 24, bottom: 44, left: 64 };
   const DRAW_W = W - MARGIN.left - MARGIN.right;
   const DRAW_H = H - MARGIN.top - MARGIN.bottom;
   const MID_Y = MARGIN.top + DRAW_H / 2;
@@ -51,6 +75,8 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
   const shearRange = Math.max(Math.abs(maxShear), Math.abs(minShear), 1);
   const momentRange = Math.max(Math.abs(maxMoment), Math.abs(minMoment), 1);
 
+  const pointValues = getValuesAtLabeledPoints(points, labeledPoints);
+
   const shearZeroAnnotations = shearZeroCrossings.map(pos => {
     const leftPt = labeledPoints
       .filter(pt => pt.position < pos)
@@ -64,29 +90,18 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
   const momentPath = buildPath(points, p => yScale(p.moment, momentRange), toX);
   const momentFillPath = buildFillPath(points, p => yScale(p.moment, momentRange), toX, MID_Y);
 
-  function findExtreme(selector: (p: DiagramPoint) => number, cmp: (a: number, b: number) => boolean): DiagramPoint | null {
-    let best: DiagramPoint | null = null;
-    let bestVal = 0;
-    for (const p of points) {
-      const v = selector(p);
-      if (!best || cmp(v, bestVal)) { best = p; bestVal = v; }
-    }
-    return best;
-  }
-
-  const maxSPt = findExtreme(p => p.shear, (a, b) => a > b);
-  const minSPt = findExtreme(p => p.shear, (a, b) => a < b);
-  const maxMPt = findExtreme(p => p.moment, (a, b) => a > b);
-  const minMPt = findExtreme(p => p.moment, (a, b) => a < b);
-
   function yGridLines(range: number, steps: number): JSX.Element[] {
     const lines: JSX.Element[] = [];
     for (let i = -steps; i <= steps; i++) {
       const val = (i / steps) * range;
       const y = yScale(val, range);
+      const isZero = Math.abs(val) < 1e-8;
       lines.push(
         <g key={i}>
-          <line x1={MARGIN.left} y1={y} x2={MARGIN.left + DRAW_W} y2={y} stroke="#e2e8f0" strokeWidth="0.5" />
+          <line x1={MARGIN.left} y1={y} x2={MARGIN.left + DRAW_W} y2={y}
+            stroke={isZero ? '#cbd5e1' : '#f1f5f9'}
+            strokeWidth={isZero ? '1.5' : '1'}
+            strokeDasharray={isZero ? '4,3' : 'none'} />
           <text x={MARGIN.left - 6} y={y + 3} textAnchor="end" fontSize="9" fill="#94a3b8">
             {val.toFixed(1)}
           </text>
@@ -100,9 +115,12 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
     const px = toX(pt.position);
     return (
       <g key={`xt-${pt.label}`}>
-        <line x1={px} y1={MARGIN.top + DRAW_H} x2={px} y2={MARGIN.top + DRAW_H + 5} stroke="#94a3b8" strokeWidth="1" />
-        <text x={px} y={MARGIN.top + DRAW_H + 16} textAnchor="middle" fontSize="10" fontWeight="bold" fill="#64748b">
-          {pt.label}
+        <line x1={px} y1={MARGIN.top + DRAW_H} x2={px} y2={MARGIN.top + DRAW_H + 4} stroke="#94a3b8" strokeWidth="1" />
+        <text x={px} y={MARGIN.top + DRAW_H + 14} textAnchor="middle" fontSize="11" fontWeight="600" fill="#475569" style={{ cursor: 'pointer' }}>
+          {pt.label}<title>x = {pt.position.toFixed(2)}{U.length}</title>
+        </text>
+        <text x={px} y={MARGIN.top + DRAW_H + 26} textAnchor="middle" fontSize="8" fill="#94a3b8">
+          {pt.position.toFixed(2)}{U.length}
         </text>
       </g>
     );
@@ -112,83 +130,123 @@ export default function DiagramOutput({ points, maxShear, minShear, maxMoment, m
     const px = toX(pt.position);
     return (
       <line key={`cl-${pt.label}`} x1={px} y1={MARGIN.top} x2={px} y2={MARGIN.top + DRAW_H}
-        stroke="#cbd5e1" strokeWidth="0.5" strokeDasharray="3,3" />
+        stroke="#f1f5f9" strokeWidth="0.5" strokeDasharray="3,3" />
     );
   });
 
-  const Chart = ({ path, fillPath, color, fillColor, maxPt, minPt, maxVal, minVal, range, label, unit, zeroAnnotations }: {
+  const Chart = ({ path, fillPath, color, fillColor, maxVal, minVal, range, label, unit, zeroAnnotations, valueKey }: {
     path: string; fillPath: string; color: string; fillColor: string;
-    maxPt: DiagramPoint | null; minPt: DiagramPoint | null;
     maxVal: number; minVal: number; range: number; label: string; unit: string;
     zeroAnnotations?: { px: number; py: number; label: string; distance: number }[];
-  }) => (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto bg-white rounded-lg border border-slate-200 shadow-sm" preserveAspectRatio="xMidYMid meet">
-      {yGridLines(range, 3)}
-      {critLines}
+    valueKey?: 'shear' | 'moment';
+  }) => {
+    const prefix = valueKey === 'shear' ? 'V' : 'M';
+    const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
+    return (
+      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden relative">
+        <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+          <span className="text-xs font-semibold text-slate-700">{label}</span>
+          <span className="text-[10px] text-slate-400">({unit})</span>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+          {yGridLines(range, 3)}
+          {critLines}
 
-      <line x1={MARGIN.left} y1={MID_Y} x2={MARGIN.left + DRAW_W} y2={MID_Y} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,2" />
-      <line x1={MARGIN.left} y1={MARGIN.top} x2={MARGIN.left} y2={MARGIN.top + DRAW_H} stroke="#94a3b8" strokeWidth="1" />
-      <line x1={MARGIN.left} y1={MID_Y} x2={MARGIN.left - 5} y2={MID_Y} stroke="#94a3b8" strokeWidth="1" />
-      <line x1={MARGIN.left} y1={MARGIN.top + DRAW_H} x2={MARGIN.left + DRAW_W} y2={MARGIN.top + DRAW_H} stroke="#94a3b8" strokeWidth="1" />
+          <line x1={MARGIN.left} y1={MID_Y} x2={MARGIN.left + DRAW_W} y2={MID_Y} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,2" />
+          <line x1={MARGIN.left} y1={MARGIN.top} x2={MARGIN.left} y2={MARGIN.top + DRAW_H} stroke="#94a3b8" strokeWidth="1" />
+          <line x1={MARGIN.left} y1={MID_Y} x2={MARGIN.left - 5} y2={MID_Y} stroke="#94a3b8" strokeWidth="1" />
+          <line x1={MARGIN.left} y1={MARGIN.top + DRAW_H} x2={MARGIN.left + DRAW_W} y2={MARGIN.top + DRAW_H} stroke="#94a3b8" strokeWidth="1" />
 
-      {xTicks}
+          {xTicks}
 
-      {fillPath && <path d={fillPath} fill={fillColor} />}
-      {path && <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" />}
+          {fillPath && <path d={fillPath} fill={fillColor} />}
+          {path && <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" />}
 
-      {maxPt && (
-        <g>
-          <circle cx={toX(maxPt.x)} cy={yScale(maxVal, range)} r="4" fill={color} stroke="#18181b" strokeWidth="1.5" />
-          <text x={toX(maxPt.x) + 6} y={yScale(maxVal, range) - 4} fontSize="9" fill={color} fontWeight="bold">
-            Max: {maxVal.toFixed(1)}
+          {valueKey && labeledPoints.map(pt => {
+            const allAtPos = points.filter(p => Math.abs(p.x - pt.position) < 1e-8);
+            if (allAtPos.length === 0) return null;
+            const last = allAtPos[allAtPos.length - 1];
+            const val = valueKey === 'shear' ? last.shear : last.moment;
+            const px = toX(pt.position);
+            const py = yScale(val, range);
+            const labelW = `${val.toFixed(1)}`.length * 5 + 8;
+            const offsetX = px > MARGIN.left + DRAW_W - labelW ? -(labelW + 4) : 4;
+            return (
+              <g key={`pv-${pt.label}`}>
+                {allAtPos.map((dp, i) => {
+                  const v = valueKey === 'shear' ? dp.shear : dp.moment;
+                  const dpy = yScale(v, range);
+                  const side = allAtPos.length > 1 ? (i === 0 ? 'left' : 'right') : '';
+                  const tipText = `${pt.label}${side ? ` (${side})` : ''}: ${prefix} = ${v.toFixed(2)} ${unit} @ x = ${pt.position.toFixed(2)}${U.length}`;
+                  return (
+                    <circle key={i} cx={px} cy={dpy} r="4" fill={color} stroke="white" strokeWidth="2" opacity="0.85"
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={e => {
+                        const r = (e.currentTarget as SVGCircleElement).getBoundingClientRect();
+                        const c = (e.currentTarget as SVGCircleElement).closest('svg')!.getBoundingClientRect();
+                        setTip({ text: tipText, x: r.left - c.left + 10, y: r.top - c.top - 8 });
+                      }}
+                      onMouseLeave={() => setTip(null)}
+                    />
+                  );
+                })}
+                <text x={px + offsetX} y={py - 4} textAnchor={offsetX < 0 ? 'end' : 'start'} fontSize="9" fill={valColor(val)} fontWeight="700" opacity="0.9" style={{ cursor: 'pointer' }}>
+                  {val.toFixed(1)}
+                </text>
+              </g>
+            );
+          })}
+
+          <text x={MARGIN.left + DRAW_W / 2} y={MARGIN.top + DRAW_H + 38} textAnchor="middle" fontSize="8" fill="#94a3b8">
+            Position ({U.length})
           </text>
-        </g>
-      )}
-      {minPt && (
-        <g>
-          <circle cx={toX(minPt.x)} cy={yScale(minVal, range)} r="4" fill={color} stroke="#18181b" strokeWidth="1.5" />
-          <text x={toX(minPt.x) + 6} y={yScale(minVal, range) - 4} fontSize="9" fill={color} fontWeight="bold">
-            Min: {minVal.toFixed(1)}
-          </text>
-        </g>
-      )}
 
-      <text x={MARGIN.left + DRAW_W / 2} y={H - 4} textAnchor="middle" fontSize="11" fill="#64748b" fontWeight="600">
-        {label} Diagram
-      </text>
-      <text x={8} y={MID_Y + 4} fontSize="9" fill="#94a3b8" textAnchor="start">
-        ({unit})
-      </text>
-      <text x={MARGIN.left + DRAW_W / 2} y={MARGIN.top + DRAW_H + 28} textAnchor="middle" fontSize="9" fill="#94a3b8">
-        Position ({U.length})
-      </text>
-
-      {zeroAnnotations?.map((z, i) => (
-        <g key={`z${i}`}>
-          <line x1={z.px} y1={z.py - 6} x2={z.px} y2={z.py + 6} stroke="#18181b" strokeWidth="1.5" />
-          <circle cx={z.px} cy={z.py} r="3" fill="#18181b" />
-          <text x={z.px + 6} y={z.py - 4} fontSize="9" fill="#18181b" fontWeight="bold">
-            x = {z.distance.toFixed(2)} {U.length} {z.label ? `from ${z.label}` : ''}
-          </text>
-        </g>
-      ))}
-    </svg>
-  );
+          {zeroAnnotations?.map((z, i) => (
+            <g key={`z${i}`}>
+              <line x1={z.px} y1={z.py - 6} x2={z.px} y2={z.py + 6} stroke="#dc2626" strokeWidth="1.5" />
+              <circle cx={z.px} cy={z.py} r="3" fill="#dc2626" />
+              <text x={z.px + 6} y={z.py - 4} fontSize="9" fill="#dc2626" fontWeight="bold">
+                x = {z.distance.toFixed(2)} {U.length} {z.label ? `from ${z.label}` : ''}
+              </text>
+            </g>
+          ))}
+        </svg>
+        {tip && (
+          <div
+            className="pointer-events-none absolute z-50 px-2.5 py-1.5 text-[11px] font-mono font-semibold text-white rounded-md shadow-lg"
+            style={{
+              left: tip.x, top: tip.y,
+              background: 'rgba(30,41,59,0.92)',
+              transform: 'translateY(-100%)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {tip.text}
+          </div>
+        )}
+        <div className="flex items-center gap-4 px-4 py-1.5 border-t border-slate-100 text-[10px]">
+          <span>{prefix}<sub>max</sub> = <span className={`font-bold ${valColorClass(maxVal)}`}>{maxVal.toFixed(2)}</span> {unit}</span>
+          <span>{prefix}<sub>min</sub> = <span className={`font-bold ${valColorClass(minVal)}`}>{minVal.toFixed(2)}</span> {unit}</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <Chart
         path={shearPath} fillPath={shearFillPath} color="#f87171" fillColor="rgba(248,113,113,0.08)"
-        maxPt={maxSPt} minPt={minSPt}
         maxVal={maxShear} minVal={minShear}
-        range={shearRange} label="Shear Force" unit={U.force}
+        range={shearRange} label="Shear Diagram" unit={U.force}
         zeroAnnotations={shearZeroAnnotations}
+        valueKey="shear"
       />
       <Chart
         path={momentPath} fillPath={momentFillPath} color="#60a5fa" fillColor="rgba(96,165,250,0.08)"
-        maxPt={maxMPt} minPt={minMPt}
         maxVal={maxMoment} minVal={minMoment}
-        range={momentRange} label="Bending Moment" unit={U.moment}
+        range={momentRange} label="Moment Diagram" unit={U.moment}
+        valueKey="moment"
       />
     </div>
   );

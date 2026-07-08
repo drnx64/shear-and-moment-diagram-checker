@@ -1,12 +1,13 @@
 import type {
   BeamSupport, PointLoad, ConcentratedMoment, DistributedLoad,
   Reaction, DiagramPoint, SegmentInfo, BeamResult, SegmentDerivation,
+  ReactionDerivationStep,
 } from '../types';
 
 function cleanNumber(n: number): number {
-  if (Math.abs(n) < 1e-6) return 0;
+  if (Math.abs(n) < 1e-8) return 0;
   const rounded = Math.round(n * 1e8) / 1e8;
-  if (Math.abs(rounded - Math.round(rounded)) < 1e-6) return Math.round(rounded);
+  if (Math.abs(rounded - Math.round(rounded)) < 1e-8) return Math.round(rounded);
   return rounded;
 }
 
@@ -19,40 +20,35 @@ function pointLoadHorizontal(load: PointLoad): number {
   return load.magnitude * Math.sin(load.angle * Math.PI / 180);
 }
 
-function distLoadParams(load: DistributedLoad) {
-  const L = load.endPos - load.startPos;
-  if (L <= 0) return { force: 0, centroid: load.startPos, slope: 0 };
-  const slope = (load.endMag - load.startMag) / L;
-  const force = -(load.startMag + load.endMag) * L / 2;
-  const denom = load.startMag + load.endMag;
-  const centroid = denom !== 0
-    ? load.startPos + L * (load.startMag + 2 * load.endMag) / (3 * denom)
-    : (load.startPos + load.endPos) / 2;
-  return { force, centroid, slope };
-}
+type DistContrib = { shear: number; moment: number };
 
-function computeDistLoadShearMoment(x: number, load: DistributedLoad): { shear: number; moment: number } {
+function computeDistLoadShearMoment(x: number, load: DistributedLoad): DistContrib {
   const { startPos: a, endPos: b, startMag: w1, endMag: w2 } = load;
   if (x <= a) return { shear: 0, moment: 0 };
+
   const L = b - a;
   const m = (w2 - w1) / L;
   const actualEnd = Math.min(x, b);
   const dx = actualEnd - a;
 
-  let shear = -(w1 * dx + 0.5 * m * dx * dx);
+  let shear: number;
   let moment: number;
+
   if (x <= b) {
+    shear = -(w1 * dx + 0.5 * m * dx * dx);
     moment = -(0.5 * w1 * dx * dx + (1 / 6) * m * dx * dx * dx);
   } else {
-    moment = -(w1 * L * (x - (a + b) / 2) + 0.5 * m * L * L * (x - (a + 2 * b) / 3));
+    const totalForce = (w1 + w2) * L / 2;
+    const centroidOffset = L * (w1 + 2 * w2) / (3 * (w1 + w2));
+    const centroid = a + centroidOffset;
+    shear = -totalForce;
+    moment = -totalForce * (x - centroid);
   }
 
-  shear = cleanNumber(shear);
-  moment = cleanNumber(moment);
-  return { shear, moment };
+  return { shear: cleanNumber(shear), moment: cleanNumber(moment) };
 }
 
-function computeInternalForces(
+export function computeInternalShearMoment(
   x: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
@@ -100,7 +96,7 @@ function computeInternalForces(
 }
 
 function computeReactions(
-  _beamLength: number,
+  beamLength: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
   moments: ConcentratedMoment[],
@@ -115,9 +111,10 @@ function computeReactions(
     let sumMom = 0;
 
     for (const p of pointLoads) {
-      sumVert += pointLoadVertical(p);
+      const v = pointLoadVertical(p);
+      sumVert += v;
       sumHoriz += pointLoadHorizontal(p);
-      sumMom += pointLoadVertical(p) * (p.position - fixed.position);
+      sumMom += v * (p.position - fixed.position);
     }
 
     for (const m of moments) {
@@ -125,10 +122,14 @@ function computeReactions(
     }
 
     for (const d of distributedLoads) {
-      const eq = distLoadParams(d);
-      sumVert += eq.force;
-      sumHoriz += 0;
-      sumMom += eq.force * (eq.centroid - fixed.position);
+      const L = d.endPos - d.startPos;
+      const totalForce = (d.startMag + d.endMag) * L / 2;
+      const denom = d.startMag + d.endMag;
+      const centroid = denom !== 0
+        ? d.startPos + L * (d.startMag + 2 * d.endMag) / (3 * denom)
+        : (d.startPos + d.endPos) / 2;
+      sumVert -= totalForce;
+      sumMom -= totalForce * (centroid - fixed.position);
     }
 
     return [{
@@ -136,7 +137,7 @@ function computeReactions(
       supportId: fixed.id,
       vertical: cleanNumber(-sumVert),
       horizontal: cleanNumber(-sumHoriz),
-      moment: cleanNumber(-sumMom),
+      moment: cleanNumber(sumMom),
     }];
   }
 
@@ -152,20 +153,24 @@ function computeReactions(
 
     for (const p of pointLoads) {
       const v = pointLoadVertical(p);
-      const h = pointLoadHorizontal(p);
       sumVert += v;
-      sumHoriz += h;
+      sumHoriz += pointLoadHorizontal(p);
       sumMomAboutLeft += v * (p.position - left.position);
     }
 
     for (const m of moments) {
-      sumMomAboutLeft += (m.direction === 'CCW' ? 1 : -1) * m.magnitude;
+      sumMomAboutLeft += (m.direction === 'CW' ? 1 : -1) * m.magnitude;
     }
 
     for (const d of distributedLoads) {
-      const eq = distLoadParams(d);
-      sumVert += eq.force;
-      sumMomAboutLeft += eq.force * (eq.centroid - left.position);
+      const L = d.endPos - d.startPos;
+      const totalForce = (d.startMag + d.endMag) * L / 2;
+      const denom = d.startMag + d.endMag;
+      const centroid = denom !== 0
+        ? d.startPos + L * (d.startMag + 2 * d.endMag) / (3 * denom)
+        : (d.startPos + d.endPos) / 2;
+      sumVert -= totalForce;
+      sumMomAboutLeft -= totalForce * (centroid - left.position);
     }
 
     const rRightVert = -sumMomAboutLeft / dist;
@@ -175,16 +180,41 @@ function computeReactions(
     const pinId = pinSupport ? pinSupport.id : left.id;
 
     const reactions: Reaction[] = [];
-      for (const s of sorted) {
-        const isPin = s.id === pinId;
-        reactions.push({
-          id: `reaction-${s.id}`,
-          supportId: s.id,
-          vertical: cleanNumber(s.id === left.id ? rLeftVert : rRightVert),
-          horizontal: cleanNumber(isPin ? -sumHoriz : 0),
-          moment: 0,
-        });
+    for (const s of sorted) {
+      const isPin = s.id === pinId;
+      let momentReaction = 0;
+
+      if (s.type === 'fixed') {
+        let netMom = 0;
+        const other = s.id === left.id ? right : left;
+        for (const p of pointLoads) {
+          netMom += pointLoadVertical(p) * (p.position - s.position);
+        }
+        for (const m of moments) {
+          netMom += (m.direction === 'CCW' ? 1 : -1) * m.magnitude;
+        }
+        for (const d of distributedLoads) {
+          const L = d.endPos - d.startPos;
+          const totalForce = (d.startMag + d.endMag) * L / 2;
+          const denom = d.startMag + d.endMag;
+          const centroid = denom !== 0
+            ? d.startPos + L * (d.startMag + 2 * d.endMag) / (3 * denom)
+            : (d.startPos + d.endPos) / 2;
+          netMom -= totalForce * (centroid - s.position);
+        }
+        const otherReaction = s.id === left.id ? rRightVert : rLeftVert;
+        netMom += otherReaction * (other.position - s.position);
+        momentReaction = -netMom;
       }
+
+      reactions.push({
+        id: `reaction-${s.id}`,
+        supportId: s.id,
+        vertical: cleanNumber(s.id === left.id ? rLeftVert : rRightVert),
+        horizontal: cleanNumber(isPin ? -sumHoriz : 0),
+        moment: cleanNumber(momentReaction),
+      });
+    }
     return reactions;
   }
 
@@ -201,7 +231,6 @@ function getCriticalPoints(
   const points = new Set<number>();
   points.add(0);
   points.add(beamLength);
-
   for (const s of supports) points.add(s.position);
   for (const p of pointLoads) points.add(p.position);
   for (const m of moments) points.add(m.position);
@@ -209,13 +238,97 @@ function getCriticalPoints(
     points.add(d.startPos);
     points.add(d.endPos);
   }
-
   return Array.from(points).sort((a, b) => a - b);
 }
 
 function fmtNumAbs(n: number): string {
   const abs = Math.abs(Math.round(n * 100) / 100);
   return abs === 0 ? '0' : `${abs}`;
+}
+
+function generateReactionDerivation(
+  beamLength: number,
+  supports: BeamSupport[],
+  pointLoads: PointLoad[],
+  moments: ConcentratedMoment[],
+  distributedLoads: DistributedLoad[],
+): ReactionDerivationStep[] {
+  const steps: ReactionDerivationStep[] = [];
+  const sorted = [...supports].sort((a, b) => a.position - b.position);
+
+  if (sorted.length === 1 && sorted[0].type === 'fixed') {
+    steps.push({ label: 'Configuration', equation: '\\text{Single fixed support at } x = ' + sorted[0].position.toFixed(2) });
+    steps.push({ label: 'ΣF_y = 0 (↑+)', equation: 'R_y + \\sum F_{\\text{vertical}} = 0' });
+    steps.push({ label: 'ΣF_x = 0 (→+)', equation: 'R_x + \\sum F_{\\text{horizontal}} = 0' });
+    steps.push({ label: 'ΣM = 0 (CCW+)', equation: 'M_R + \\sum M_{\\text{about support}} = 0' });
+    steps.push({ label: 'Result', equation: '\\text{Reactions computed from equilibrium}' });
+    return steps;
+  }
+
+  if (sorted.length === 2) {
+    const left = sorted[0];
+    const right = sorted[1];
+    const dist = right.position - left.position;
+
+    steps.push({ label: 'Setup', equation: '\\text{Two supports: } ' +
+      `x_L = ${left.position.toFixed(2)}, x_R = ${right.position.toFixed(2)}, L = ${dist.toFixed(2)}` });
+
+    let sumVertTerms: string[] = [];
+    let sumMomTerms: string[] = [];
+    let sumVert = 0;
+    let sumMomAboutLeft = 0;
+
+    for (const p of pointLoads) {
+      const v = pointLoadVertical(p);
+      const dirStr = p.direction === 'up' ? '\\uparrow' : '\\downarrow';
+      sumVertTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
+      sumMomTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)} \\times (${p.position.toFixed(2)} - ${left.position.toFixed(2)})`);
+      sumVert += v;
+      sumMomAboutLeft += v * (p.position - left.position);
+    }
+
+    for (const d of distributedLoads) {
+      const Ld = d.endPos - d.startPos;
+      const totalForce = (d.startMag + d.endMag) * Ld / 2;
+      const denom = d.startMag + d.endMag;
+      const centroid = denom !== 0
+        ? d.startPos + Ld * (d.startMag + 2 * d.endMag) / (3 * denom)
+        : (d.startPos + d.endPos) / 2;
+      sumVertTerms.push(`${totalForce >= 0 ? '-' : '+'}${Math.abs(totalForce).toFixed(2)}`);
+      sumMomTerms.push(`- ${totalForce.toFixed(2)} \\times (${centroid.toFixed(2)} - ${left.position.toFixed(2)})`);
+      sumVert -= totalForce;
+      sumMomAboutLeft -= totalForce * (centroid - left.position);
+    }
+
+    for (const m of moments) {
+      const sign = m.direction === 'CW' ? '+' : '-';
+      sumMomTerms.push(`${sign} ${m.magnitude.toFixed(2)}`);
+      sumMomAboutLeft += (m.direction === 'CW' ? 1 : -1) * m.magnitude;
+    }
+
+    steps.push({ label: 'ΣF_y = 0 (↑+)',
+      equation: `R_L + R_R ${sumVertTerms.join(' ')} = 0` });
+
+    steps.push({ label: 'ΣM_L = 0',
+      equation: `R_R \\times ${dist.toFixed(2)} ${sumMomTerms.join(' ')} = 0` });
+
+    const rRightVert = -sumMomAboutLeft / dist;
+    const rLeftVert = -sumVert - rRightVert;
+
+    steps.push({ label: 'R_R', equation: `R_R = ${rRightVert.toFixed(4)}` });
+    steps.push({ label: 'R_L', equation: `R_L = ${rLeftVert.toFixed(4)}` });
+
+    for (const s of sorted) {
+      const vert = s.id === left.id ? rLeftVert : rRightVert;
+      if (s.type === 'fixed') {
+        steps.push({ label: `M_${s.id}`, equation: `\\text{Moment reaction at fixed support computed from } \\sum M = 0` });
+      }
+    }
+
+    return steps;
+  }
+
+  return [];
 }
 
 function generateSegmentDerivation(
@@ -227,21 +340,6 @@ function generateSegmentDerivation(
   distributedLoads: DistributedLoad[],
   reactions: Reaction[],
 ): SegmentDerivation {
-  function term(val: number, desc: string): string {
-    const sign = val >= 0 ? '+' : '-';
-    return `${sign} ${fmtNumAbs(val)}${desc}`;
-  }
-
-  function momentTerm(val: number, leverDesc: string): string {
-    const sign = val >= 0 ? '+' : '-';
-    return `${sign} ${fmtNumAbs(val)} \\times ${leverDesc}`;
-  }
-
-  function momentTermFormula(val: number, leverDesc: string): string {
-    const sign = val >= 0 ? '+' : '-';
-    return `${sign} ${fmtNumAbs(val)}${leverDesc}`;
-  }
-
   const shearTerms: string[] = [];
   const momentTerms: string[] = [];
   const momentFormulaTerms: string[] = [];
@@ -255,88 +353,127 @@ function generateSegmentDerivation(
     const sup = supports.find(s => s.id === r.supportId)!;
     if (Math.abs(r.vertical) > 1e-8) {
       const val = cleanNumber(r.vertical);
-      shearTerms.push(term(val, ''));
+      const sign = val >= 0 ? '+' : '-';
+      const absVal = fmtNumAbs(val);
+      shearTerms.push(`${sign} ${absVal}`);
       const pos = sup.position;
-      if (pos <= segStart) {
-        const offset = cleanNumber(segStart - pos);
-        const lever = Math.abs(offset) < 1e-8 ? 'x' : `(x + ${fmtNumAbs(offset)})`;
-        const mt = momentTerm(val, lever);
-        momentTerms.push(mt);
-        momentFormulaTerms.push(momentTermFormula(val, lever));
-      } else {
-        const offset = cleanNumber(pos - segStart);
-        const lever = `(x - ${fmtNumAbs(offset)})`;
-        const mt = momentTerm(val, lever);
-        momentTerms.push(mt);
-        momentFormulaTerms.push(momentTermFormula(val, lever));
-      }
+      const lever = pos <= segStart
+        ? (Math.abs(segStart - pos) < 1e-8 ? 'x' : `(x + ${fmtNumAbs(segStart - pos)})`)
+        : `(x - ${fmtNumAbs(pos - segStart)})`;
+      const msign = val >= 0 ? '+' : '-';
+      momentTerms.push(`${msign} ${absVal} \\times ${lever}`);
+      momentFormulaTerms.push(`${msign} ${absVal}${lever}`);
+    }
+    if (Math.abs(r.moment) > 1e-8) {
+      const mVal = cleanNumber(r.moment);
+      const sign = mVal >= 0 ? '+' : '-';
+      momentTerms.push(`${sign} ${fmtNumAbs(mVal)} \\times 1`);
+      momentFormulaTerms.push(`${sign} ${fmtNumAbs(mVal)}`);
     }
   }
 
   for (const p of pointLoads) {
     if (p.position >= segEnd) continue;
     const v = cleanNumber(pointLoadVertical(p));
-    shearTerms.push(term(v, ''));
-    if (p.position <= segStart) {
-      const offset = cleanNumber(segStart - p.position);
-      const lever = Math.abs(offset) < 1e-8 ? 'x' : `(x + ${fmtNumAbs(offset)})`;
-      const mt = momentTerm(v, lever);
-      momentTerms.push(mt);
-      momentFormulaTerms.push(momentTermFormula(v, lever));
-    } else {
-      const offset = cleanNumber(p.position - segStart);
-      const lever = `(x - ${fmtNumAbs(offset)})`;
-      const mt = momentTerm(v, lever);
-      momentTerms.push(mt);
-      momentFormulaTerms.push(momentTermFormula(v, lever));
-    }
+    if (Math.abs(v) < 1e-8) continue;
+    const sign = v >= 0 ? '+' : '-';
+    const absVal = fmtNumAbs(v);
+    shearTerms.push(`${sign} ${absVal}`);
+    const pos = p.position;
+    const lever = pos < segStart
+      ? `(x + ${fmtNumAbs(segStart - pos)})`
+      : `(x - ${fmtNumAbs(pos - segStart)})`;
+    const msign = v >= 0 ? '+' : '-';
+    momentTerms.push(`${msign} ${absVal} \\times ${lever}`);
+    momentFormulaTerms.push(`${msign} ${absVal}${lever}`);
   }
 
   for (const m of moments) {
     if (m.position >= segEnd) continue;
     const mv = cleanNumber((m.direction === 'CCW' ? 1 : -1) * m.magnitude);
-    const mt = momentTerm(mv, '1');
-    momentTerms.push(mt);
-    momentFormulaTerms.push(momentTermFormula(mv, '1'));
+    const sign = mv >= 0 ? '+' : '-';
+    const absVal = fmtNumAbs(mv);
+    momentTerms.push(`${sign} ${absVal} \\times 1`);
+    momentFormulaTerms.push(`${sign} ${absVal}`);
   }
 
+  // Distributed loads — fixed to handle partial overlaps correctly
   for (const d of distributedLoads) {
     if (d.startPos >= segEnd) continue;
-    const overlapStart = Math.max(d.startPos, segStart);
-    const overlapEnd = Math.min(d.endPos, segEnd);
-    if (overlapEnd <= overlapStart + 1e-10) {
-      const totalForce = cleanNumber(computeDistLoadShearMoment(segEnd, d).shear);
-      if (Math.abs(totalForce) > 1e-8) {
-        shearTerms.push(term(totalForce, ''));
-        const cent = d.startPos + (d.endPos - d.startPos) * (d.startMag + 2 * d.endMag) / (3 * (d.startMag + d.endMag));
-        const arm = cleanNumber(segStart - cent);
-        const mt = momentTerm(totalForce, fmtNumAbs(arm));
-        momentTerms.push(mt);
-        momentFormulaTerms.push(momentTermFormula(totalForce, fmtNumAbs(arm)));
-      }
-      continue;
-    }
-    if (segStart >= d.startPos) {
-      const w1 = d.startMag;
-      const w2 = d.endMag;
-      const a = d.startPos;
-      const L = d.endPos - a;
-      const m = (w2 - w1) / L;
-      const wAtSegStart = cleanNumber(w1 + m * (segStart - a));
-      if (Math.abs(w1 - w2) < 1e-10) {
-        shearTerms.push(`- ${fmtNumAbs(w1)}x`);
-        momentTerms.push(`- ${fmtNumAbs(wAtSegStart)} \\times \\frac{x^{2}}{2}`);
-        momentFormulaTerms.push(`- ${fmtNumAbs(0.5 * wAtSegStart)}x^{2}`);
+    const a = d.startPos;
+    const b = d.endPos;
+    const Ld = b - a;
+    const w1 = d.startMag;
+    const w2 = d.endMag;
+    const mSlope = (w2 - w1) / Ld;
+
+    const oStart = Math.max(a, segStart);
+    const oEnd = Math.min(b, segEnd);
+    if (oEnd <= oStart + 1e-10) continue;
+    const dx = oEnd - oStart;
+
+    if (segStart >= a) {
+      // Segment starts within or at the distributed load
+      const wAtStart = w1 + mSlope * (segStart - a);
+      if (Math.abs(wAtStart) < 1e-8 && Math.abs(mSlope) < 1e-8) continue;
+
+      const isUniform = Math.abs(w1 - w2) < 1e-8 || Math.abs(mSlope) < 1e-8;
+
+      if (isUniform) {
+        const w = wAtStart;
+        if (Math.abs(w) > 1e-8) {
+          shearTerms.push(`- ${fmtNumAbs(w)}x`);
+          momentTerms.push(`- ${fmtNumAbs(w)} \\times \\frac{x^{2}}{2}`);
+          momentFormulaTerms.push(`- ${fmtNumAbs(0.5 * w)}x^{2}`);
+        }
       } else {
-        shearTerms.push(`- ${fmtNumAbs(w1)}x - \\frac{1}{2} \\times ${fmtNumAbs(m)}x^{2}`);
-        momentTerms.push(`- ${fmtNumAbs(wAtSegStart)} \\times \\frac{x^{2}}{2} - \\frac{1}{2} \\times ${fmtNumAbs(m)} \\times \\frac{x^{3}}{3}`);
-        momentFormulaTerms.push(`- ${fmtNumAbs(0.5 * wAtSegStart)}x^{2} - ${fmtNumAbs((1 / 6) * m)}x^{3}`);
+        let sTerm = '';
+        let mTerm = '';
+        let mfTerm = '';
+
+        if (Math.abs(wAtStart) > 1e-8) {
+          sTerm = `- ${fmtNumAbs(wAtStart)}x`;
+          mTerm = `- ${fmtNumAbs(wAtStart)} \\times \\frac{x^{2}}{2}`;
+          mfTerm = `- ${fmtNumAbs(0.5 * wAtStart)}x^{2}`;
+        }
+
+        const halfSlope = fmtNumAbs(0.5 * mSlope);
+        const sixthSlope = fmtNumAbs((1 / 6) * mSlope);
+
+        if (sTerm) sTerm += ' ';
+        sTerm += `- ${halfSlope}x^{2}`;
+        if (mTerm) mTerm += ' ';
+        mTerm += `- ${halfSlope} \\times \\frac{x^{3}}{3}`;
+        if (mfTerm) mfTerm += ' ';
+        mfTerm += `- ${sixthSlope}x^{3}`;
+
+        shearTerms.push(sTerm);
+        momentTerms.push(mTerm);
+        momentFormulaTerms.push(mfTerm);
       }
+    } else {
+      // Segment starts before the distributed load — use partial resultant
+      // for the overlapping portion (a to oEnd)
+      const wAtOStart = w1 + mSlope * (oStart - a);
+      const wAtOEnd = w1 + mSlope * (oEnd - a);
+      const partialForce = (wAtOStart + wAtOEnd) * dx / 2;
+      const denom = wAtOStart + wAtOEnd;
+      let centroidOffset: number;
+      if (Math.abs(denom) > 1e-10) {
+        centroidOffset = dx * (wAtOStart + 2 * wAtOEnd) / (3 * denom);
+      } else {
+        centroidOffset = dx / 2;
+      }
+      const centroid = oStart + centroidOffset;
+      const arm = centroid - segStart;
+
+      shearTerms.push(`- ${fmtNumAbs(partialForce)}`);
+      momentTerms.push(`- ${fmtNumAbs(partialForce)} \\times ${fmtNumAbs(arm)}`);
+      momentFormulaTerms.push(`- ${fmtNumAbs(partialForce * arm)}`);
     }
   }
 
   const shearEquation = '\\sum F_y = 0 \\quad (\\uparrow+)';
-
   const momentEquation = '\\sum M_{\\text{cut}} = 0 \\quad (\\text{clockwise }+)';
 
   const shearFullEq = shearTerms.length > 0
@@ -362,25 +499,37 @@ function generateSegmentDerivation(
     return `M(x) = ${inner}`;
   })();
 
+  const xDist = cleanNumber(segEnd - segStart);
+  const vLeft = computeInternalShearMoment(segStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions).shear;
+  const vRight = computeInternalShearMoment(segEnd - 0.0001, supports, pointLoads, moments, distributedLoads, reactions).shear;
+  const mLeft = computeInternalShearMoment(segStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions).moment;
+  const mRight = computeInternalShearMoment(segEnd - 0.0001, supports, pointLoads, moments, distributedLoads, reactions).moment;
+
   return {
     shear: {
       equation: shearEquation,
       terms: shearTerms.map(t => ({ label: '', value: t })),
       result: shearResult,
       fullEquation: shearFullEq,
+      xRange: [0, xDist],
+      atLeft: `x = 0 \\rightarrow V = ${cleanNumber(vLeft).toFixed(1)}`,
+      atRight: `x = ${xDist.toFixed(2)} \\rightarrow V = ${cleanNumber(vRight).toFixed(1)}`,
     },
     moment: {
       equation: momentEquation,
       terms: momentTerms.map(t => ({ label: '', value: t })),
       result: momentResult,
       fullEquation: momentFullEq,
+      xRange: [0, xDist],
+      atLeft: `x = 0 \\rightarrow M = ${cleanNumber(mLeft).toFixed(1)}`,
+      atRight: `x = ${xDist.toFixed(2)} \\rightarrow M = ${cleanNumber(mRight).toFixed(1)}`,
     },
   };
 }
 
 function generateSegments(
   criticalPoints: number[],
-  _beamLength: number,
+  beamLength: number,
   supports: BeamSupport[],
   pointLoads: PointLoad[],
   moments: ConcentratedMoment[],
@@ -394,8 +543,9 @@ function generateSegments(
     const xEnd = criticalPoints[i + 1];
     if (xEnd - xStart < 1e-10) continue;
 
-    const forcesAtStart = computeInternalForces(xStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions);
-
+    const forcesAtStart = computeInternalShearMoment(
+      xStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions
+    );
 
     const vStart = forcesAtStart.shear;
     const mStart = forcesAtStart.moment;
@@ -436,7 +586,6 @@ function computeShearZeroCrossings(segments: SegmentInfo[]): number[] {
 
   for (const seg of segments) {
     const { start, end, vStart, distLoad } = seg;
-
     if (!distLoad) continue;
 
     const wStart = distLoad.wStart;
@@ -444,18 +593,18 @@ function computeShearZeroCrossings(segments: SegmentInfo[]): number[] {
     const L = end - start;
     if (L < 1e-10) continue;
 
-    if (Math.abs(wStart - wEnd) < 1e-10) {
+    if (Math.abs(wStart - wEnd) < 1e-8) {
       const w = wStart;
       if (Math.abs(w) < 1e-10) continue;
-      const xZero = (vStart + w * start) / w;
+      const xZero = start + vStart / w;
       if (xZero > start + 1e-8 && xZero < end - 1e-8) {
         crossings.push(xZero);
       }
     } else {
       const mSlope = (wEnd - wStart) / L;
       const a = -0.5 * mSlope;
-      const b = -wStart + mSlope * start;
-      const c = vStart + wStart * start - 0.5 * mSlope * start * start;
+      const b = -(wStart + mSlope * start);
+      const c = vStart;
 
       if (Math.abs(a) > 1e-10) {
         const disc = b * b - 4 * a * c;
@@ -483,7 +632,7 @@ export function solveBeam(
   distributedLoads: DistributedLoad[],
 ): BeamResult {
   if (beamLength <= 0 || supports.length === 0) {
-    return { reactions: [], diagramPoints: [], segments: [], maxShear: 0, minShear: 0, maxMoment: 0, minMoment: 0, shearZeroCrossings: [] };
+    return { reactions: [], diagramPoints: [], segments: [], maxShear: 0, minShear: 0, maxMoment: 0, minMoment: 0, shearZeroCrossings: [], reactionDerivation: [] };
   }
 
   const reactions = computeReactions(beamLength, supports, pointLoads, moments, distributedLoads);
@@ -495,13 +644,13 @@ export function solveBeam(
 
   for (let i = 0; i <= NUM_SAMPLES; i++) {
     const x = (beamLength * i) / NUM_SAMPLES;
-    const forces = computeInternalForces(x, supports, pointLoads, moments, distributedLoads, reactions);
+    const forces = computeInternalShearMoment(x, supports, pointLoads, moments, distributedLoads, reactions);
     diagramPoints.push({ x, shear: forces.shear, moment: forces.moment });
   }
 
   for (const cp of critical) {
-    const left = computeInternalForces(cp - 0.0001, supports, pointLoads, moments, distributedLoads, reactions);
-    const right = computeInternalForces(cp + 0.0001, supports, pointLoads, moments, distributedLoads, reactions);
+    const left = computeInternalShearMoment(cp - 0.0001, supports, pointLoads, moments, distributedLoads, reactions);
+    const right = computeInternalShearMoment(cp + 0.0001, supports, pointLoads, moments, distributedLoads, reactions);
 
     if (Math.abs(left.shear - right.shear) > 1e-8) {
       diagramPoints.push({ x: cp, shear: left.shear, moment: left.moment });
@@ -518,6 +667,7 @@ export function solveBeam(
   diagramPoints.sort((a, b) => a.x - b.x);
 
   const segments = generateSegments(critical, beamLength, supports, pointLoads, moments, distributedLoads, reactions);
+  const reactionDerivation = generateReactionDerivation(beamLength, supports, pointLoads, moments, distributedLoads);
 
   let maxShear = -Infinity, minShear = Infinity;
   let maxMoment = -Infinity, minMoment = Infinity;
@@ -530,5 +680,5 @@ export function solveBeam(
 
   const shearZeroCrossings = computeShearZeroCrossings(segments);
 
-  return { reactions, diagramPoints, segments, maxShear, minShear, maxMoment, minMoment, shearZeroCrossings };
+  return { reactions, diagramPoints, segments, maxShear, minShear, maxMoment, minMoment, shearZeroCrossings, reactionDerivation };
 }

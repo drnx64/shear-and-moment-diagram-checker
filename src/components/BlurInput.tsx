@@ -8,9 +8,11 @@ interface Props {
   max?: number;
   className?: string;
   placeholder?: string;
+  suffix?: string;
+  disabled?: boolean;
 }
 
-export default function BlurInput({ value, onChange, onBlurValidate, min, max, className, placeholder }: Props) {
+export default function BlurInput({ value, onChange, onBlurValidate, min, max, className, placeholder, suffix, disabled }: Props) {
   const [local, setLocal] = useState(String(value));
   const committed = useRef(value);
 
@@ -41,15 +43,24 @@ export default function BlurInput({ value, onChange, onBlurValidate, min, max, c
   }
 
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      value={local}
-      onChange={e => setLocal(e.target.value)}
-      onBlur={commit}
-      onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
-      className={className}
-      placeholder={placeholder}
-    />
+    <div className="relative flex items-center">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); }
+          if (e.key === 'Escape') { setLocal(String(committed.current)); (e.target as HTMLInputElement).blur(); }
+        }}
+        className={className}
+        placeholder={placeholder}
+        disabled={disabled}
+      />
+      {suffix && (
+        <span className="absolute right-2.5 text-xs text-slate-400 pointer-events-none select-none">{suffix}</span>
+      )}
+    </div>
   );
 }

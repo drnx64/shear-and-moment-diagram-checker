@@ -80,12 +80,18 @@ export interface SegmentDerivation {
     terms: ShearDerivationLine[];
     result: string;
     fullEquation: string;
+    xRange: [number, number];
+    atLeft: string;
+    atRight: string;
   };
   moment: {
     equation: string;
     terms: MomentDerivationLine[];
     result: string;
     fullEquation: string;
+    xRange: [number, number];
+    atLeft: string;
+    atRight: string;
   };
 }
 
@@ -106,6 +112,11 @@ export interface ZeroCrossing {
   distance: number;
 }
 
+export interface ReactionDerivationStep {
+  label: string;
+  equation: string;
+}
+
 export interface BeamResult {
   reactions: Reaction[];
   diagramPoints: DiagramPoint[];
@@ -115,6 +126,7 @@ export interface BeamResult {
   maxMoment: number;
   minMoment: number;
   shearZeroCrossings: number[];
+  reactionDerivation: ReactionDerivationStep[];
 }
 
 export interface LabeledPoint {
