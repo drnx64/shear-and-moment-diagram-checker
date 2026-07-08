@@ -281,7 +281,7 @@ function generateReactionDerivation(
     for (const p of pointLoads) {
       const v = pointLoadVertical(p);
       sumVertTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
-      sumMomTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)} \\times (${p.position.toFixed(2)} - ${left.position.toFixed(2)})`);
+      sumMomTerms.push(`${v >= 0 ? '+' : ''}${v.toFixed(2)}(${p.position.toFixed(2)} - ${left.position.toFixed(2)})`);
       sumVert += v;
       sumMomAboutLeft += v * (p.position - left.position);
     }
@@ -294,7 +294,7 @@ function generateReactionDerivation(
         ? d.startPos + Ld * (d.startMag + 2 * d.endMag) / (3 * denom)
         : (d.startPos + d.endPos) / 2;
       sumVertTerms.push(`${totalForce >= 0 ? '-' : '+'}${Math.abs(totalForce).toFixed(2)}`);
-      sumMomTerms.push(`- ${totalForce.toFixed(2)} \\times (${centroid.toFixed(2)} - ${left.position.toFixed(2)})`);
+      sumMomTerms.push(`- ${totalForce.toFixed(2)}(${centroid.toFixed(2)} - ${left.position.toFixed(2)})`);
       sumVert -= totalForce;
       sumMomAboutLeft -= totalForce * (centroid - left.position);
     }
@@ -309,7 +309,7 @@ function generateReactionDerivation(
       equation: `R_L + R_R ${sumVertTerms.join(' ')} = 0` });
 
     steps.push({ label: 'ΣM_L = 0',
-      equation: `R_R \\times ${dist.toFixed(2)} ${sumMomTerms.join(' ')} = 0` });
+      equation: `R_R(${dist.toFixed(2)}) ${sumMomTerms.join(' ')} = 0` });
 
     const rRightVert = -sumMomAboutLeft / dist;
     const rLeftVert = -sumVert - rRightVert;
@@ -359,13 +359,13 @@ function generateSegmentDerivation(
         ? (Math.abs(segStart - pos) < 1e-8 ? 'x' : `(x + ${fmtNumAbs(segStart - pos)})`)
         : `(x - ${fmtNumAbs(pos - segStart)})`;
       const msign = val >= 0 ? '+' : '-';
-      momentTerms.push(`${msign} ${absVal} \\times ${lever}`);
+      momentTerms.push(`${msign} ${absVal}${lever}`);
       momentFormulaTerms.push(`${msign} ${absVal}${lever}`);
     }
     if (Math.abs(r.moment) > 1e-8) {
       const mVal = cleanNumber(r.moment);
       const sign = mVal >= 0 ? '+' : '-';
-      momentTerms.push(`${sign} ${fmtNumAbs(mVal)} \\times 1`);
+      momentTerms.push(`${sign} ${fmtNumAbs(mVal)}`);
       momentFormulaTerms.push(`${sign} ${fmtNumAbs(mVal)}`);
     }
   }
@@ -382,7 +382,7 @@ function generateSegmentDerivation(
       ? `(x + ${fmtNumAbs(segStart - pos)})`
       : `(x - ${fmtNumAbs(pos - segStart)})`;
     const msign = v >= 0 ? '+' : '-';
-    momentTerms.push(`${msign} ${absVal} \\times ${lever}`);
+    momentTerms.push(`${msign} ${absVal}${lever}`);
     momentFormulaTerms.push(`${msign} ${absVal}${lever}`);
   }
 
@@ -391,7 +391,7 @@ function generateSegmentDerivation(
     const mv = cleanNumber((m.direction === 'CCW' ? 1 : -1) * m.magnitude);
     const sign = mv >= 0 ? '+' : '-';
     const absVal = fmtNumAbs(mv);
-    momentTerms.push(`${sign} ${absVal} \\times 1`);
+    momentTerms.push(`${sign} ${absVal}`);
     momentFormulaTerms.push(`${sign} ${absVal}`);
   }
 
@@ -421,7 +421,7 @@ function generateSegmentDerivation(
         const w = wAtStart;
         if (Math.abs(w) > 1e-8) {
           shearTerms.push(`- (${fmtNumAbs(w)})x`);
-          momentTerms.push(`- \\frac{${fmtNumAbs(w)}x^{2}}{2}`);
+          momentTerms.push(`- (${fmtNumAbs(w)})\\left(\\frac{x^{2}}{2}\\right)`);
           momentFormulaTerms.push(`- \\frac{${fmtNumAbs(w)}}{2}x^{2}`);
         }
       } else {
@@ -431,16 +431,16 @@ function generateSegmentDerivation(
 
         if (Math.abs(wAtStart) > 1e-8) {
           sTerm = `- (${fmtNumAbs(wAtStart)})x`;
-          mTerm = `- \\frac{${fmtNumAbs(wAtStart)}x^{2}}{2}`;
+          mTerm = `- (${fmtNumAbs(wAtStart)})\\left(\\frac{x^{2}}{2}\\right)`;
           mfTerm = `- \\frac{${fmtNumAbs(wAtStart)}}{2}x^{2}`;
         }
 
         if (sTerm) sTerm += ' ';
-        sTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}x^{2}`;
+        sTerm += `- \\left(\\frac{${fmtNumAbs(mSlope)}}{2}\\right)x^{2}`;
         if (mTerm) mTerm += ' ';
-        mTerm += `- \\frac{${fmtNumAbs(mSlope)}x^{3}}{6}`;
+        mTerm += `- \\left(\\frac{${fmtNumAbs(mSlope)}}{2}\\right)\\left(\\frac{x^{3}}{3}\\right)`;
         if (mfTerm) mfTerm += ' ';
-        mfTerm += `- \\frac{${fmtNumAbs(mSlope)}}{6}x^{3}`;
+        mfTerm += `- \\left(\\frac{${fmtNumAbs(mSlope)}}{2}\\right)\\left(\\frac{x^{3}}{3}\\right)`;
 
         shearTerms.push(sTerm);
         momentTerms.push(mTerm);
@@ -648,17 +648,19 @@ export function solveBeam(
   }
 
   // Find shear zero crossings directly from diagram points
-  // (catches crossings in all cases: distributed loads, point loads, supports)
+  // (catches all cases: distributed loads, point loads, supports, exact-zero points)
   const shearZeroCrossings: number[] = [];
   for (let i = 0; i < diagramPoints.length - 1; i++) {
     const p1 = diagramPoints[i];
     const p2 = diagramPoints[i + 1];
-    if (p1.shear * p2.shear < 0) {
-      const t = p1.shear / (p1.shear - p2.shear);
-      const x = p1.x + t * (p2.x - p1.x);
-      if (shearZeroCrossings.length === 0 || Math.abs(shearZeroCrossings[shearZeroCrossings.length - 1] - x) > 1e-6) {
-        shearZeroCrossings.push(x);
-      }
+    const s1 = Math.abs(p1.shear) < 1e-10 ? 0 : p1.shear > 0 ? 1 : -1;
+    const s2 = Math.abs(p2.shear) < 1e-10 ? 0 : p2.shear > 0 ? 1 : -1;
+    if (s1 === s2) continue;
+    // Zero crossing detected — interpolate
+    const t = p1.shear / (p1.shear - p2.shear);
+    const x = p1.x + t * (p2.x - p1.x);
+    if (shearZeroCrossings.length === 0 || Math.abs(shearZeroCrossings[shearZeroCrossings.length - 1] - x) > 1e-6) {
+      shearZeroCrossings.push(x);
     }
   }
 
