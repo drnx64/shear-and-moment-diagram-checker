@@ -132,6 +132,14 @@ export default function BeamCanvas({ beamLength, supports, pointLoads, moments, 
                   <line key={i} x1={px} y1={arrowTop} x2={px} y2={arrowBot} stroke="#14b8a6" strokeWidth="1" opacity="0.7" markerEnd="url(#dist-arrow-up)" />
                 );
               })}
+              <text x={x1} y={p1 - 6} textAnchor="middle" fontSize="9" fill="#14b8a6" fontWeight="600">
+                {d.startMag.toFixed(1)} {U.force}/{U.length}
+              </text>
+              {Math.abs(d.endMag - d.startMag) > 1e-6 && (
+                <text x={x2} y={p2 - 6} textAnchor="middle" fontSize="9" fill="#14b8a6" fontWeight="600">
+                  {d.endMag.toFixed(1)} {U.force}/{U.length}
+                </text>
+              )}
             </g>
           );
         })}

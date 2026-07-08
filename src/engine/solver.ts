@@ -420,9 +420,9 @@ function generateSegmentDerivation(
       if (isUniform) {
         const w = wAtStart;
         if (Math.abs(w) > 1e-8) {
-          shearTerms.push(`- ${fmtNumAbs(w)}x`);
-          momentTerms.push(`- ${fmtNumAbs(w)} \\times \\frac{x^{2}}{2}`);
-          momentFormulaTerms.push(`- ${fmtNumAbs(0.5 * w)}x^{2}`);
+          shearTerms.push(`- (${fmtNumAbs(w)})x`);
+          momentTerms.push(`- \\frac{${fmtNumAbs(w)}x^{2}}{2}`);
+          momentFormulaTerms.push(`- \\frac{${fmtNumAbs(w)}}{2}x^{2}`);
         }
       } else {
         let sTerm = '';
@@ -430,20 +430,17 @@ function generateSegmentDerivation(
         let mfTerm = '';
 
         if (Math.abs(wAtStart) > 1e-8) {
-          sTerm = `- ${fmtNumAbs(wAtStart)}x`;
-          mTerm = `- ${fmtNumAbs(wAtStart)} \\times \\frac{x^{2}}{2}`;
-          mfTerm = `- ${fmtNumAbs(0.5 * wAtStart)}x^{2}`;
+          sTerm = `- (${fmtNumAbs(wAtStart)})x`;
+          mTerm = `- \\frac{${fmtNumAbs(wAtStart)}x^{2}}{2}`;
+          mfTerm = `- \\frac{${fmtNumAbs(wAtStart)}}{2}x^{2}`;
         }
 
-        const halfSlope = fmtNumAbs(0.5 * mSlope);
-        const sixthSlope = fmtNumAbs((1 / 6) * mSlope);
-
         if (sTerm) sTerm += ' ';
-        sTerm += `- ${halfSlope}x^{2}`;
+        sTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}x^{2}`;
         if (mTerm) mTerm += ' ';
-        mTerm += `- ${halfSlope} \\times \\frac{x^{3}}{3}`;
+        mTerm += `- \\frac{${fmtNumAbs(mSlope)}x^{3}}{6}`;
         if (mfTerm) mfTerm += ' ';
-        mfTerm += `- ${sixthSlope}x^{3}`;
+        mfTerm += `- \\frac{${fmtNumAbs(mSlope)}}{6}x^{3}`;
 
         shearTerms.push(sTerm);
         momentTerms.push(mTerm);
@@ -466,8 +463,8 @@ function generateSegmentDerivation(
       const arm = centroid - segStart;
 
       shearTerms.push(`- ${fmtNumAbs(partialForce)}`);
-      momentTerms.push(`- ${fmtNumAbs(partialForce)} \\times ${fmtNumAbs(arm)}`);
-      momentFormulaTerms.push(`- ${fmtNumAbs(partialForce * arm)}`);
+      momentTerms.push(`- ${fmtNumAbs(partialForce)}(${fmtNumAbs(arm)})`);
+      momentFormulaTerms.push(`- ${fmtNumAbs(partialForce)}(${fmtNumAbs(arm)})`);
     }
   }
 
@@ -498,7 +495,11 @@ function generateSegmentDerivation(
   })();
 
   const xDist = cleanNumber(segEnd - segStart);
-  const vLeft = computeInternalShearMoment(segStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions).shear;
+  // Exact shear at segment boundaries matching the formula
+  const shearLeftOfStart = computeInternalShearMoment(segStart, supports, pointLoads, moments, distributedLoads, reactions).shear;
+  let vLeft = shearLeftOfStart;
+  for (const r of reactions) if (Math.abs(r.position - segStart) < 1e-8) vLeft += r.vertical;
+  for (const p of pointLoads) if (Math.abs(p.position - segStart) < 1e-8) vLeft += pointLoadVertical(p);
   const vRight = computeInternalShearMoment(segEnd - 0.0001, supports, pointLoads, moments, distributedLoads, reactions).shear;
   const mLeft = computeInternalShearMoment(segStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions).moment;
   const mRight = computeInternalShearMoment(segEnd - 0.0001, supports, pointLoads, moments, distributedLoads, reactions).moment;
@@ -541,12 +542,20 @@ function generateSegments(
     const xEnd = criticalPoints[i + 1];
     if (xEnd - xStart < 1e-10) continue;
 
-    const forcesAtStart = computeInternalShearMoment(
+    // Exact shear just RIGHT of xStart (no epsilon UDL error)
+    const shearLeftOfStart = computeInternalShearMoment(
+      xStart, supports, pointLoads, moments, distributedLoads, reactions
+    ).shear;
+    let vStart = shearLeftOfStart;
+    for (const r of reactions) {
+      if (Math.abs(r.position - xStart) < 1e-8) vStart += r.vertical;
+    }
+    for (const p of pointLoads) {
+      if (Math.abs(p.position - xStart) < 1e-8) vStart += pointLoadVertical(p);
+    }
+    const mStart = computeInternalShearMoment(
       xStart + 0.0001, supports, pointLoads, moments, distributedLoads, reactions
-    );
-
-    const vStart = forcesAtStart.shear;
-    const mStart = forcesAtStart.moment;
+    ).moment;
 
     const distLoad = distributedLoads.find(d => {
       const loadStart = Math.max(xStart, d.startPos);

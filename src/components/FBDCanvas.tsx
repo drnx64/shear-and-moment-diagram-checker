@@ -87,38 +87,46 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
           const x = toX(sup.position);
 
           const vLen = arrowLen(r.vertical);
-          const vTipX = x;
-          const vTipY = BEAM_BOT + (r.vertical >= 0 ? -vLen : vLen);
-          const vTailY = BEAM_BOT;
+          // Reactions always drawn BELOW the beam
+          let tipY: number, tailY: number;
+          if (r.vertical >= 0) {
+            // Upward: arrow from below pointing UP to beam bottom
+            tailY = BEAM_BOT + vLen;
+            tipY = BEAM_BOT;
+          } else {
+            // Downward: arrow from beam bottom pointing DOWN
+            tailY = BEAM_BOT;
+            tipY = BEAM_BOT + vLen;
+          }
 
           return (
             <g key={r.id}>
               {Math.abs(r.vertical) > 1e-6 && (
                 <>
-                  <line x1={vTipX} y1={vTailY} x2={vTipX} y2={vTipY} stroke="#2563eb" strokeWidth="2" markerEnd="url(#reaction-arrow)" />
-                  <rect x={vTipX - 20} y={vTipY + (r.vertical >= 0 ? -16 : 4)} width="40" height="14" rx="3" fill="rgba(255,255,255,0.9)" />
-                  <text x={vTipX} y={vTipY + (r.vertical >= 0 ? -6 : 14)} textAnchor="middle" fontSize="9" fill={valColor(r.vertical)} fontWeight="700">
+                  <line x1={x} y1={tailY} x2={x} y2={tipY} stroke="#2563eb" strokeWidth="2" markerEnd="url(#reaction-arrow)" />
+                  <rect x={x - 20} y={tailY + (r.vertical >= 0 ? 4 : -18)} width="40" height="14" rx="3" fill="rgba(255,255,255,0.9)" />
+                  <text x={x} y={tailY + (r.vertical >= 0 ? 14 : -6)} textAnchor="middle" fontSize="9" fill={valColor(r.vertical)} fontWeight="700">
                     {r.vertical.toFixed(2)} {U.force}
                   </text>
                 </>
               )}
               {Math.abs(r.horizontal) > 1e-6 && (
                 <>
-                  <line x1={x} y1={BEAM_BOT + 6} x2={x + (r.horizontal >= 0 ? 30 : -30)} y2={BEAM_BOT + 6} stroke="#2563eb" strokeWidth="2" markerEnd="url(#reaction-arrow)" />
-                  <text x={x + (r.horizontal >= 0 ? 34 : -34)} y={BEAM_BOT + 10} textAnchor={r.horizontal >= 0 ? 'start' : 'end'} fontSize="9" fill={valColor(r.horizontal)} fontWeight="700">
+                  <line x1={x} y1={BEAM_BOT + 22} x2={x + (r.horizontal >= 0 ? 30 : -30)} y2={BEAM_BOT + 22} stroke="#2563eb" strokeWidth="2" markerEnd="url(#reaction-arrow)" />
+                  <text x={x + (r.horizontal >= 0 ? 34 : -34)} y={BEAM_BOT + 26} textAnchor={r.horizontal >= 0 ? 'start' : 'end'} fontSize="9" fill={valColor(r.horizontal)} fontWeight="700">
                     {r.horizontal.toFixed(2)} {U.force}
                   </text>
                 </>
               )}
               {Math.abs(r.moment) > 1e-6 && (
                 <>
-                  <circle cx={x} cy={BEAM_BOT + 30} r="12" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeDasharray="3,2" />
+                  <circle cx={x} cy={BEAM_BOT + 46} r="12" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeDasharray="3,2" />
                   <polygon points={
                     r.moment >= 0
-                      ? `${x + 4},${BEAM_BOT + 24} ${x + 8},${BEAM_BOT + 18} ${x + 12},${BEAM_BOT + 24}`
-                      : `${x - 4},${BEAM_BOT + 24} ${x - 8},${BEAM_BOT + 18} ${x - 12},${BEAM_BOT + 24}`
+                      ? `${x + 4},${BEAM_BOT + 40} ${x + 8},${BEAM_BOT + 34} ${x + 12},${BEAM_BOT + 40}`
+                      : `${x - 4},${BEAM_BOT + 40} ${x - 8},${BEAM_BOT + 34} ${x - 12},${BEAM_BOT + 40}`
                   } fill="#2563eb" />
-                  <text x={x} y={BEAM_BOT + 48} textAnchor="middle" fontSize="9" fill={valColor(r.moment)} fontWeight="700">
+                  <text x={x} y={BEAM_BOT + 64} textAnchor="middle" fontSize="9" fill={valColor(r.moment)} fontWeight="700">
                     {r.moment.toFixed(2)} {U.moment}
                   </text>
                 </>
@@ -133,11 +141,21 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
           const rad = p.angle * Math.PI / 180;
           const dx = len * Math.sin(rad);
           const dy = len * Math.cos(rad);
-          const dir = p.direction === 'down' ? 1 : -1;
-          const tipX = x + dx;
-          const tipY = BEAM_TOP + dir * dy;
-          const tailX = x;
-          const tailY = BEAM_TOP;
+          // Loads always shown above the beam
+          // Downward: arrow from above beam pointing DOWN into beam
+          // Upward: arrow from beam top pointing UP away from beam
+          let tailX: number, tailY: number, tipX: number, tipY: number;
+          if (p.direction === 'down') {
+            tailX = x + dx;
+            tailY = BEAM_TOP - dy;
+            tipX = x;
+            tipY = BEAM_TOP;
+          } else {
+            tailX = x;
+            tailY = BEAM_TOP;
+            tipX = x + dx;
+            tipY = BEAM_TOP - dy;
+          }
           return (
             <g key={p.id} opacity="0.25">
               <line x1={tailX} y1={tailY} x2={tipX} y2={tipY} stroke="#94a3b8" strokeWidth="2" />
@@ -156,6 +174,14 @@ export default function FBDCanvas({ beamLength, supports, pointLoads, moments: _
           return (
             <g key={d.id} opacity="0.15">
               <polygon points={`${x1},${baseY} ${x1},${p1} ${x2},${p2} ${x2},${baseY}`} fill="#94a3b8" stroke="#94a3b8" strokeWidth="1" />
+              <text x={x1} y={p1 - 4} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="600" opacity="1">
+                {d.startMag.toFixed(1)}
+              </text>
+              {Math.abs(d.endMag - d.startMag) > 1e-6 && (
+                <text x={x2} y={p2 - 4} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="600" opacity="1">
+                  {d.endMag.toFixed(1)}
+                </text>
+              )}
             </g>
           );
         })}
