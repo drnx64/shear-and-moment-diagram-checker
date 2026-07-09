@@ -65,6 +65,7 @@ export default function ControlPanel({
   const [sections, setSections] = useState<Record<string, boolean>>({
     supports: true, pointLoads: true, moments: true, distLoads: true,
   });
+  const [advancedLoads, setAdvancedLoads] = useState<Record<string, boolean>>({});
 
   const U = UNIT_SYSTEMS[unitSystem];
 
@@ -179,6 +180,43 @@ export default function ControlPanel({
         <BlurInput value={beamLength} onChange={setBeamLength} min={0.1} className={inputBase} suffix={U.length} />
       </div>
 
+      {/* JSON Import / Export */}
+      <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3">
+        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Import / Export</label>
+        <div className="flex gap-2">
+          <button onClick={() => {
+            const data = { beamLength, supports, pointLoads, moments, distributedLoads, unitSystem };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'beam-config.json'; a.click();
+            URL.revokeObjectURL(url);
+          }} className="flex-1 px-2.5 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors">
+            Export JSON
+          </button>
+          <label className="flex-1 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors cursor-pointer text-center">
+            Import JSON
+            <input type="file" accept=".json" className="hidden" onChange={e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => {
+                try {
+                  const data = JSON.parse(reader.result as string);
+                  if (typeof data.beamLength === 'number') setBeamLength(data.beamLength);
+                  if (data.unitSystem === 'metric' || data.unitSystem === 'imperial') setUnitSystem(data.unitSystem);
+                  if (Array.isArray(data.supports)) setSupports(data.supports.map((s: BeamSupport) => ({ ...s, id: genId() })));
+                  if (Array.isArray(data.pointLoads)) setPointLoads(data.pointLoads.map((p: PointLoad) => ({ ...p, id: genId() })));
+                  if (Array.isArray(data.moments)) setMoments(data.moments.map((m: ConcentratedMoment) => ({ ...m, id: genId() })));
+                  if (Array.isArray(data.distributedLoads)) setDistributedLoads(data.distributedLoads.map((d: DistributedLoad) => ({ ...d, id: genId() })));
+                } catch { alert('Invalid JSON file'); }
+              };
+              reader.readAsText(file);
+              e.target.value = '';
+            }} />
+          </label>
+        </div>
+      </div>
+
       <Section icon={Columns2} title="Supports" count={supports.length} max={2} sectionKey="supports">
         {supports.map(s => (
           <div key={s.id} className="relative group flex items-center gap-2 p-2 bg-slate-50 rounded-md border border-slate-200 pl-3">
@@ -206,7 +244,8 @@ export default function ControlPanel({
 
       <Section icon={ArrowDown} title="Point Loads" count={pointLoads.length} sectionKey="pointLoads">
         {pointLoads.map(p => {
-          const [showAdvanced, setShowAdvanced] = useState(false);
+          const showAdvanced = advancedLoads[p.id] ?? false;
+          const toggleAdvanced = () => setAdvancedLoads(prev => ({ ...prev, [p.id]: !(prev[p.id] ?? false) }));
           return (
             <div key={p.id} className="relative group space-y-1.5 p-2 bg-slate-50 rounded-md border border-slate-200 pl-3" style={{ borderLeftColor: '#f59e0b' }}>
               <RowAccent color="#f59e0b" />
@@ -230,7 +269,7 @@ export default function ControlPanel({
                   className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 focus:border-blue-500 focus:outline-none">
                   {loadCases.map(lc => <option key={lc} value={lc}>{lc}</option>)}
                 </select>
-                <button onClick={() => setShowAdvanced(!showAdvanced)}
+                <button onClick={toggleAdvanced}
                   className="text-[10px] text-slate-400 hover:text-slate-600 px-1.5 py-1 rounded transition-colors">
                   {showAdvanced ? 'Less' : 'More'}
                 </button>

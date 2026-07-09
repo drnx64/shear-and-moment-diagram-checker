@@ -337,6 +337,77 @@ function generateReactionDerivation(
   return [];
 }
 
+function gcd(a: number, b: number): number {
+  return Math.abs(b) < 1e-10 ? Math.abs(a) : gcd(b, a % b);
+}
+
+function fmtFrac(num: number, den: number, varPart: string): string {
+  const g = gcd(num, den);
+  const n = num / g;
+  const d = den / g;
+  if (Math.abs(d - 1) < 1e-10) return `${n}${varPart}`;
+  return `\\frac{${n}}{${d}}${varPart}`;
+}
+
+function toFracString(val: number): string {
+  const intVal = Math.round(val);
+  if (Math.abs(val - intVal) < 1e-10) return String(intVal);
+  for (const d of [2, 3, 4, 6, 8, 12]) {
+    const n = Math.round(val * d);
+    if (Math.abs(val - n / d) < 1e-10) return `\\frac{${n}}{${d}}`;
+  }
+  return val.toFixed(2);
+}
+
+function getPower(varPart: string): number {
+  if (!varPart) return 0;
+  const m = varPart.match(/\{(\d+)\}/);
+  if (m) return parseInt(m[1], 10);
+  return varPart ? 1 : 0;
+}
+
+function combineTerms(terms: string[]): string {
+  const groups: Map<string, number> = new Map();
+  const re = /^([+-])\s*(?:(\d+(?:\.\d+)?)|\\frac\{([^}]+)\}\{([^}]+)\})(.*)$/;
+  for (const raw of terms) {
+    const t = raw.trim();
+    const m = t.match(re);
+    if (!m) continue;
+    const sign = m[1] === '+' ? 1 : -1;
+    let coeff: number;
+    if (m[2] !== undefined) coeff = parseFloat(m[2]);
+    else coeff = parseFloat(m[3]) / parseFloat(m[4]);
+    const vp = m[5].trim();
+    groups.set(vp, (groups.get(vp) || 0) + sign * coeff);
+  }
+  const parts: { vp: string; pow: number; coeff: number }[] = [];
+  for (const [vp, coeff] of groups) {
+    if (Math.abs(coeff) < 1e-10) continue;
+    parts.push({ vp, pow: getPower(vp), coeff });
+  }
+  parts.sort((a, b) => b.pow - a.pow);
+  const out: string[] = [];
+  for (const p of parts) {
+    const s = p.coeff >= 0 ? '+' : '-';
+    const ac = Math.abs(p.coeff);
+    const ic = Math.round(ac);
+    const cs = Math.abs(ac - ic) < 1e-10 ? String(ic) : toFracString(ac);
+    out.push(`${s} ${cs}${p.vp}`);
+  }
+  return out.join(' ').replace(/^\+ /, '');
+}
+
+function expandedFormulaTerms(msign: string, val: number, absVal: string, pos: number, segStart: number): string[] {
+  const atStart = Math.abs(pos - segStart) < 1e-8;
+  if (atStart) return [`${msign} ${absVal}x`];
+  const offset = pos < segStart ? segStart - pos : pos - segStart;
+  const c = pos < segStart ? val * offset : -val * offset;
+  const cSign = c >= 0 ? '+' : '-';
+  const cAbs = fmtNumAbs(c);
+  if (cAbs === '0') return [`${msign} ${absVal}x`];
+  return [`${msign} ${absVal}x`, `${cSign} ${cAbs}`];
+}
+
 function generateSegmentDerivation(
   segStart: number,
   segEnd: number,
@@ -349,6 +420,10 @@ function generateSegmentDerivation(
   const shearTerms: string[] = [];
   const momentTerms: string[] = [];
   const momentFormulaTerms: string[] = [];
+  const geoShearTerms: string[] = [];
+  const geoMomentTerms: string[] = [];
+  let ratioProp: string | undefined;
+  let hasDistLoad = false;
 
   const reactionsLeft = reactions.filter(r => {
     const sup = supports.find(s => s.id === r.supportId);
@@ -362,19 +437,23 @@ function generateSegmentDerivation(
       const sign = val >= 0 ? '+' : '-';
       const absVal = fmtNumAbs(val);
       shearTerms.push(`${sign} ${absVal}`);
+      geoShearTerms.push(`${sign} ${absVal}`);
       const pos = sup.position;
       const lever = pos <= segStart
         ? (Math.abs(segStart - pos) < 1e-8 ? 'x' : `(x + ${fmtNumAbs(segStart - pos)})`)
         : `(x - ${fmtNumAbs(pos - segStart)})`;
       const msign = val >= 0 ? '+' : '-';
       momentTerms.push(`${msign} ${absVal}${lever}`);
-      momentFormulaTerms.push(`${msign} ${absVal}${lever}`);
+      geoMomentTerms.push(`${msign} ${absVal}${lever}`);
+      momentFormulaTerms.push(...expandedFormulaTerms(msign, val, absVal, pos, segStart));
     }
     if (Math.abs(r.moment) > 1e-8) {
       const mVal = cleanNumber(r.moment);
       const sign = mVal >= 0 ? '+' : '-';
-      momentTerms.push(`${sign} ${fmtNumAbs(mVal)}`);
-      momentFormulaTerms.push(`${sign} ${fmtNumAbs(mVal)}`);
+      const term = `${sign} ${fmtNumAbs(mVal)}`;
+      momentTerms.push(term);
+      geoMomentTerms.push(term);
+      momentFormulaTerms.push(term);
     }
   }
 
@@ -385,109 +464,107 @@ function generateSegmentDerivation(
     const sign = v >= 0 ? '+' : '-';
     const absVal = fmtNumAbs(v);
     shearTerms.push(`${sign} ${absVal}`);
+    geoShearTerms.push(`${sign} ${absVal}`);
     const pos = p.position;
     const lever = pos < segStart
       ? `(x + ${fmtNumAbs(segStart - pos)})`
-      : `(x - ${fmtNumAbs(pos - segStart)})`;
+      : (Math.abs(pos - segStart) < 1e-8 ? 'x' : `(x - ${fmtNumAbs(pos - segStart)})`);
     const msign = v >= 0 ? '+' : '-';
     momentTerms.push(`${msign} ${absVal}${lever}`);
-    momentFormulaTerms.push(`${msign} ${absVal}${lever}`);
+    geoMomentTerms.push(`${msign} ${absVal}${lever}`);
+    momentFormulaTerms.push(...expandedFormulaTerms(msign, v, absVal, pos, segStart));
   }
 
   for (const m of moments) {
     if (m.position >= segEnd) continue;
     const mv = cleanNumber((m.direction === 'CCW' ? 1 : -1) * m.magnitude);
     const sign = mv >= 0 ? '+' : '-';
-    const absVal = fmtNumAbs(mv);
-    momentTerms.push(`${sign} ${absVal}`);
-    momentFormulaTerms.push(`${sign} ${absVal}`);
+    const term = `${sign} ${fmtNumAbs(mv)}`;
+    momentTerms.push(term);
+    geoMomentTerms.push(term);
+    momentFormulaTerms.push(term);
   }
 
-  // Distributed loads — fixed to handle partial overlaps correctly
+  // Distributed loads — rectangle + triangle splitting per handbook guide
+  // The scanned load is included if any part of it lies left of X_cut
   for (const d of distributedLoads) {
     if (d.startPos >= segEnd) continue;
     const a = d.startPos;
     const b = d.endPos;
     const Ld = b - a;
+    if (Ld < 1e-10) continue;
     const w1 = d.startMag;
     const w2 = d.endMag;
-    const mSlope = (w2 - w1) / Ld;
+    const m = (w2 - w1) / Ld;
 
-    const oStart = Math.max(a, segStart);
-    const oEnd = Math.min(b, segEnd);
-    if (oEnd <= oStart + 1e-10) continue;
-    const dx = oEnd - oStart;
-
-    if (segStart >= a) {
-      // Segment starts within or at the distributed load
-      const wAtStart = w1 + mSlope * (segStart - a);
-      if (Math.abs(wAtStart) < 1e-8 && Math.abs(mSlope) < 1e-8) continue;
-
-      const isUniform = Math.abs(w1 - w2) < 1e-8 || Math.abs(mSlope) < 1e-8;
-
-      if (isUniform) {
-        const w = wAtStart;
-        if (Math.abs(w) > 1e-8) {
-          shearTerms.push(`- (${fmtNumAbs(w)})x`);
-          momentTerms.push(`- (${fmtNumAbs(w)})\\left(\\frac{x^{2}}{2}\\right)`);
-          momentFormulaTerms.push(`- \\frac{${fmtNumAbs(w)}}{2}x^{2}`);
+    // --- Pre-load portion: load from a to segStart (constant force) ---
+    if (a < segStart) {
+      const preEnd = Math.min(b, segStart);
+      const preLen = preEnd - a;
+      if (preLen > 1e-10) {
+        const pre_w1 = w1;
+        const pre_w2 = w1 + m * preLen;
+        const preForce = (pre_w1 + pre_w2) * preLen / 2;
+        if (Math.abs(preForce) > 1e-8) {
+          const preCentroid = a + preLen * (pre_w1 + 2 * pre_w2) / (3 * (pre_w1 + pre_w2));
+          const preLever = segStart - preCentroid;
+          const pfStr = fmtNumAbs(preForce);
+          shearTerms.push(`- ${pfStr}`);
+          geoShearTerms.push(`- ${pfStr}`);
+          momentTerms.push(`- ${pfStr}(x + ${fmtNumAbs(preLever)})`);
+          geoMomentTerms.push(`- ${pfStr}(x + ${fmtNumAbs(preLever)})`);
+          momentFormulaTerms.push(`- ${pfStr}x`);
+          if (Math.abs(preForce * preLever) > 1e-10) momentFormulaTerms.push(`- ${fmtNumAbs(preForce * preLever)}`);
+          hasDistLoad = true;
         }
-      } else {
-        let sTerm = '';
-        let mTerm = '';
-        let mfTerm = '';
-
-        if (Math.abs(wAtStart) > 1e-8) {
-          sTerm = `- (${fmtNumAbs(wAtStart)})x`;
-          mTerm = `- (${fmtNumAbs(wAtStart)})\\left(\\frac{x^{2}}{2}\\right)`;
-          mfTerm = `- \\frac{${fmtNumAbs(wAtStart)}}{2}x^{2}`;
-        }
-
-        if (sTerm) sTerm += ' ';
-        sTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}x^{2}`;
-        if (mTerm) mTerm += ' ';
-        mTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{x^{3}}{3}\\right)`;
-        if (mfTerm) mfTerm += ' ';
-        mfTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{x^{3}}{3}\\right)`;
-
-        shearTerms.push(sTerm);
-        momentTerms.push(mTerm);
-        momentFormulaTerms.push(mfTerm);
       }
-    } else {
-      // Segment starts before the distributed load — the overlap starts at oStart = a
-      // Express formulas in terms of local x (measured from segment start)
-      // The load starts at x = a - segStart from the segment's origin
-      const loadOffset = a - segStart;
-      const hasConst = Math.abs(w1) > 1e-8;
-      const hasSlope = Math.abs(mSlope) > 1e-8;
+    }
 
-      // Shear: -w1*(x - offset) - (mSlope/2)*(x - offset)²
-      let sTerm = '';
-      if (hasConst) sTerm = `- (${fmtNumAbs(w1)})(x - ${fmtNumAbs(loadOffset)})`;
-      if (hasSlope) {
-        if (sTerm) sTerm += ' ';
-        sTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}(x - ${fmtNumAbs(loadOffset)})^{2}`;
-      }
-      if (sTerm) shearTerms.push(sTerm);
+    // --- Within-segment portion: from sliceStart to X_cut ---
+    const sliceStart = Math.max(a, segStart);
+    if (sliceStart >= segEnd) continue;
+    if (sliceStart >= b - 1e-10) continue; // load doesn't extend into segment
 
-      // Moment:
-      let mTerm = '';
-      if (hasConst) mTerm = `- (${fmtNumAbs(w1)})\\left(\\frac{(x - ${fmtNumAbs(loadOffset)})^{2}}{2}\\right)`;
-      if (hasSlope) {
-        if (mTerm) mTerm += ' ';
-        mTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{(x - ${fmtNumAbs(loadOffset)})^{3}}{3}\\right)`;
-      }
-      if (mTerm) momentTerms.push(mTerm);
+    const loadOffset = a > segStart ? a - segStart : 0;
 
-      // Moment formula:
-      let mfTerm = '';
-      if (hasConst) mfTerm = `- \\frac{${fmtNumAbs(w1)}}{2}(x - ${fmtNumAbs(loadOffset)})^{2}`;
-      if (hasSlope) {
-        if (mfTerm) mfTerm += ' ';
-        mfTerm += `- \\frac{${fmtNumAbs(mSlope)}}{2}\\left(\\frac{(x - ${fmtNumAbs(loadOffset)})^{3}}{3}\\right)`;
-      }
-      if (mfTerm) momentFormulaTerms.push(mfTerm);
+    const w_left = w1 + m * (sliceStart - a);
+    if (Math.abs(w_left) < 1e-8 && Math.abs(m) < 1e-8) continue;
+    hasDistLoad = true;
+
+    const dxStr = loadOffset > 0 ? `(x - ${fmtNumAbs(loadOffset)})` : 'x';
+    const w1Str = fmtNumAbs(w_left);
+    const mStr = fmtNumAbs(m);
+
+    // Ratio & proportion: y/x = (w₂ - w₁) / L_load  (triangular portion, y is extra height above uniform base)
+    if (Math.abs(m) > 1e-8) {
+      const wDiff = fmtNumAbs(w2 - w1);
+      ratioProp = `\\frac{y}{${dxStr}} = \\frac{${wDiff}}{${fmtNum(Ld, 1)}} \\quad\\longrightarrow\\quad y = ${mStr}${dxStr}`;
+    }
+
+      // Rectangle block: w_left × dx
+    if (Math.abs(w_left) > 1e-8) {
+      const rectShear = `- ${w1Str}${dxStr}`;
+      shearTerms.push(rectShear);
+      geoShearTerms.push(rectShear);
+      const rectMoment = `- ${fmtFrac(w_left, 2, `${dxStr}^{2}`)}`;
+      momentTerms.push(rectMoment);
+      geoMomentTerms.push(rectMoment);
+      const rectMFVar = loadOffset > 0 ? `(x - ${fmtNumAbs(loadOffset)})^{2}` : `${dxStr}^{2}`;
+      momentFormulaTerms.push(`- ${fmtFrac(w_left, 2, rectMFVar)}`);
+    }
+
+    // Triangle block: ½ × dx × (w_cut − w_left)  where w_cut − w_left = m × dx
+    if (Math.abs(m) > 1e-8) {
+      // Regular (uses simplified slope form)
+      const triVar = loadOffset > 0 ? `(x - ${fmtNumAbs(loadOffset)})^{2}` : `${dxStr}^{2}`;
+      const triCubed = loadOffset > 0 ? `(x - ${fmtNumAbs(loadOffset)})^{3}` : `${dxStr}^{3}`;
+      shearTerms.push(`- ${fmtFrac(m, 2, triVar)}`);
+      momentTerms.push(`- ${fmtFrac(m, 6, triCubed)}`);
+      momentFormulaTerms.push(`- ${fmtFrac(m, 6, triCubed)}`);
+
+      // Geometric (uses y as the triangular portion only)
+      geoShearTerms.push(`- \\frac{1}{2}${dxStr}y`);
+      geoMomentTerms.push(`- \\frac{1}{2}${dxStr}y\\frac{${dxStr}}{3}`);
     }
   }
 
@@ -502,19 +579,22 @@ function generateSegmentDerivation(
     ? `-M ${momentTerms.join(' ')} = 0`
     : '-M = 0';
 
+  // Geometric equations (use y for dist load)
+  const shearGeoEq = hasDistLoad && geoShearTerms.length > 0
+    ? `-V ${geoShearTerms.join(' ')} = 0`
+    : undefined;
+  const momentGeoEq = hasDistLoad && geoMomentTerms.length > 0
+    ? `-M ${geoMomentTerms.join(' ')} = 0`
+    : undefined;
+
   const shearResult = (() => {
     if (shearTerms.length === 0) return 'V(x) = 0';
-    const inner = shearFullEq
-      .replace(/^-V /, '')
-      .replace(/ = 0$/, '')
-      .replace(/^\+ /, '');
-    return `V(x) = ${inner}`;
+    return `V(x) = ${combineTerms(shearTerms)}`;
   })();
 
   const momentResult = (() => {
     if (momentFormulaTerms.length === 0) return 'M(x) = 0';
-    const inner = momentFormulaTerms.join(' ').replace(/^\+ /, '');
-    return `M(x) = ${inner}`;
+    return `M(x) = ${combineTerms(momentFormulaTerms)}`;
   })();
 
   const xDist = cleanNumber(segEnd - segStart);
@@ -531,11 +611,13 @@ function generateSegmentDerivation(
   const mRight = computeInternalShearMoment(segEnd - 0.0001, supports, pointLoads, moments, distributedLoads, reactions).moment;
 
   return {
+    ratioProportion: ratioProp,
     shear: {
       equation: shearEquation,
       terms: shearTerms.map(t => ({ label: '', value: t })),
       result: shearResult,
       fullEquation: shearFullEq,
+      geometricEquation: shearGeoEq,
       xRange: [0, xDist],
       atLeft: `x = 0 \\rightarrow V = ${fmtNum(cleanNumber(vLeft), 1)}`,
       atRight: `x = ${fmtNum(xDist)} \\rightarrow V = ${fmtNum(cleanNumber(vRight), 1)}`,
@@ -545,6 +627,7 @@ function generateSegmentDerivation(
       terms: momentTerms.map(t => ({ label: '', value: t })),
       result: momentResult,
       fullEquation: momentFullEq,
+      geometricEquation: momentGeoEq,
       xRange: [0, xDist],
       atLeft: `x = 0 \\rightarrow M = ${fmtNum(cleanNumber(mLeft), 1)}`,
       atRight: `x = ${fmtNum(xDist)} \\rightarrow M = ${fmtNum(cleanNumber(mRight), 1)}`,

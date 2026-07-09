@@ -75,11 +75,13 @@ export interface MomentDerivationLine {
 }
 
 export interface SegmentDerivation {
+  ratioProportion?: string;
   shear: {
     equation: string;
     terms: ShearDerivationLine[];
     result: string;
     fullEquation: string;
+    geometricEquation?: string;
     xRange: [number, number];
     atLeft: string;
     atRight: string;
@@ -89,6 +91,7 @@ export interface SegmentDerivation {
     terms: MomentDerivationLine[];
     result: string;
     fullEquation: string;
+    geometricEquation?: string;
     xRange: [number, number];
     atLeft: string;
     atRight: string;

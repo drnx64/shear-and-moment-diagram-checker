@@ -7,6 +7,7 @@ import FBDCanvas from './components/FBDCanvas';
 import DiagramOutput from './components/DiagramOutput';
 import ResultsTable from './components/ResultsTable';
 import ReportView from './components/ReportView';
+import ErrorBoundary from './components/ErrorBoundary';
 import { FileText, RotateCcw, Menu, X, Ruler } from 'lucide-react';
 
 type CanvasView = 'beam' | 'fbd';
@@ -107,6 +108,7 @@ export default function App() {
   const unitLabel = unitSystem === 'metric' ? 'kN·m' : 'kips·ft';
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-slate-50 text-slate-800 antialiased">
       <header className="sticky top-0 z-30 h-14 bg-[#1e293b] text-white flex items-center justify-between px-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -228,7 +230,7 @@ export default function App() {
               {hasResults ? (
                 <>
                   <DiagramOutput points={result.diagramPoints} maxShear={result.maxShear} minShear={result.minShear} maxMoment={result.maxMoment} minMoment={result.minMoment} beamLength={beamLength} labeledPoints={labeledPoints} shearZeroCrossings={result.shearZeroCrossings} unitSystem={unitSystem} />
-                  <ResultsTable segments={result.segments} reactions={result.reactions} supports={supports} unitSystem={unitSystem} maxShear={result.maxShear} minShear={result.minShear} maxMoment={result.maxMoment} minMoment={result.minMoment} reactionDerivation={result.reactionDerivation} />
+                  <ResultsTable segments={result.segments} reactions={result.reactions} supports={supports} unitSystem={unitSystem} maxShear={result.maxShear} minShear={result.minShear} maxMoment={result.maxMoment} minMoment={result.minMoment} reactionDerivation={result.reactionDerivation} beamLength={beamLength} pointLoads={expandedLoads} moments={moments} distributedLoads={distributedLoads} labeledPoints={labeledPoints} />
                 </>
               ) : (
                 <div className="bg-white rounded-lg border border-slate-200 p-8">
@@ -254,5 +256,6 @@ export default function App() {
         Beam Shear &amp; Moment Diagram Solver &middot; made by @drnx64
       </footer>
     </div>
+    </ErrorBoundary>
   );
 }

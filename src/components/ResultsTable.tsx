@@ -1,5 +1,7 @@
 import LatexFormula from './LatexFormula';
-import type { SegmentInfo, Reaction, BeamSupport, UnitSystem, ReactionDerivationStep } from '../types';
+import SegmentCutDiagram from './SegmentCutDiagram';
+import ShearMomentIcon from './ShearMomentIcon';
+import type { SegmentInfo, Reaction, BeamSupport, UnitSystem, ReactionDerivationStep, PointLoad, ConcentratedMoment, DistributedLoad, LabeledPoint } from '../types';
 import { UNIT_SYSTEMS, fmtNum } from '../types';
 
 interface Props {
@@ -12,6 +14,11 @@ interface Props {
   maxMoment: number;
   minMoment: number;
   reactionDerivation: ReactionDerivationStep[];
+  beamLength: number;
+  pointLoads: PointLoad[];
+  moments: ConcentratedMoment[];
+  distributedLoads: DistributedLoad[];
+  labeledPoints: LabeledPoint[];
 }
 
 function supportLabel(sup: BeamSupport, index: number): string {
@@ -26,7 +33,7 @@ function valColorClass(val: number): string {
   return 'text-slate-500';
 }
 
-export default function ResultsTable({ segments, reactions, supports, unitSystem, maxShear, minShear, maxMoment, minMoment, reactionDerivation = [] }: Props) {
+export default function ResultsTable({ segments, reactions, supports, unitSystem, maxShear, minShear, maxMoment, minMoment, reactionDerivation = [], beamLength = 0, pointLoads = [], moments = [], distributedLoads = [], labeledPoints = [] }: Props) {
   const U = UNIT_SYSTEMS[unitSystem];
 
   if (segments.length === 0 && reactions.length === 0) {
@@ -104,51 +111,96 @@ export default function ResultsTable({ segments, reactions, supports, unitSystem
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
           <h3 className="text-xs font-semibold text-slate-700 mb-3">Segment Equations (Equilibrium Method)</h3>
           <div className="space-y-3">
-            {segments.map((seg, i) => {
-              const segName = `${String.fromCharCode(65 + i)} → ${String.fromCharCode(66 + i)}`;
-              return (
-                <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
-                    <span className="text-[10px] font-medium bg-slate-200 text-slate-600 rounded px-1.5 py-0.5">{segName}</span>
-                    <span className="text-[10px] text-slate-400">({fmtNum(seg.start)} → {fmtNum(seg.end)} {U.length})</span>
-                  </div>
-                  <div className="p-3 space-y-2">
-                    <div>
-                      <div className="text-[10px] text-slate-500 mb-0.5 font-medium">Shear</div>
-                      {seg.derivation ? (
-                        <div className="space-y-1">
-                          <div className="font-mono text-[11px] text-slate-500"><LatexFormula formula={seg.derivation.shear.equation} /></div>
-                          <div className="font-mono text-[11px] text-orange-600/80"><LatexFormula formula={seg.derivation.shear.fullEquation} /></div>
-                          <div className="font-mono text-xs font-semibold bg-slate-50 rounded px-2 py-1"><LatexFormula formula={seg.shearFormula} /></div>
-                          <div className="flex gap-4 text-[10px] text-slate-500 font-mono">
-                            <span><LatexFormula formula={seg.derivation.shear.atLeft} /></span>
-                            <span><LatexFormula formula={seg.derivation.shear.atRight} /></span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="font-mono text-xs font-medium"><LatexFormula formula={seg.shearFormula} /></div>
-                      )}
+              {segments.map((seg, i) => {
+                const segName = `${String.fromCharCode(65 + i)} → ${String.fromCharCode(66 + i)}`;
+                return (
+                  <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-medium bg-slate-200 text-slate-600 rounded px-1.5 py-0.5">{segName}</span>
+                        <span className="text-[10px] text-slate-400">({fmtNum(seg.start)} → {fmtNum(seg.end)} {U.length})</span>
+                      </div>
+                      <ShearMomentIcon />
                     </div>
-                    <div>
-                      <div className="text-[10px] text-slate-500 mb-0.5 font-medium">Moment</div>
-                      {seg.derivation ? (
-                        <div className="space-y-1">
-                          <div className="font-mono text-[11px] text-slate-500"><LatexFormula formula={seg.derivation.moment.equation} /></div>
-                          <div className="font-mono text-[11px] text-blue-600/80"><LatexFormula formula={seg.derivation.moment.fullEquation} /></div>
-                          <div className="font-mono text-xs font-semibold bg-slate-50 rounded px-2 py-1"><LatexFormula formula={seg.momentFormula} /></div>
-                          <div className="flex gap-4 text-[10px] text-slate-500 font-mono">
-                            <span><LatexFormula formula={seg.derivation.moment.atLeft} /></span>
-                            <span><LatexFormula formula={seg.derivation.moment.atRight} /></span>
+                    <div className="p-3 flex gap-3">
+                      <SegmentCutDiagram
+                        segment={seg}
+                        beamLength={beamLength}
+                        supports={supports}
+                        reactions={reactions}
+                        pointLoads={pointLoads}
+                        moments={moments}
+                        distributedLoads={distributedLoads}
+                        labeledPoints={labeledPoints}
+                        segLabel={segName}
+                      />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        {/* Ratio & Proportion */}
+                        {seg.derivation?.ratioProportion && (
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-1.5">
+                            <div className="text-[9px] text-amber-700 font-semibold">Ratio &amp; Proportion</div>
+                            <div className="font-mono text-[10px] text-amber-600">
+                              <LatexFormula formula={seg.derivation.ratioProportion} />
+                            </div>
                           </div>
+                        )}
+                        <div className="bg-orange-50 border border-orange-100 rounded-lg p-2">
+                          <div className="text-[10px] text-orange-700 font-semibold mb-1 flex items-center gap-1">
+                            <span>Shear</span>
+                            <span className="text-[9px] font-normal text-orange-500">ΣF<sub>y</sub> = 0 (↑+)</span>
+                          </div>
+                          {seg.derivation ? (
+                            <div className="space-y-0.5">
+                              {/* Geometric initial equation */}
+                              {seg.derivation.shear.geometricEquation && (
+                                <div className="font-mono text-[10px] text-orange-500/70">
+                                  <LatexFormula formula={seg.derivation.shear.geometricEquation} />
+                                </div>
+                              )}
+                              {/* Simplified result */}
+                              <div className="font-mono text-xs font-semibold bg-white rounded px-2 py-0.5 border border-orange-100">
+                                <LatexFormula formula={seg.shearFormula} />
+                              </div>
+                              <div className="flex gap-3 text-[10px] text-slate-500 font-mono">
+                                <span><LatexFormula formula={seg.derivation.shear.atLeft} /></span>
+                                <span><LatexFormula formula={seg.derivation.shear.atRight} /></span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="font-mono text-xs font-medium"><LatexFormula formula={seg.shearFormula} /></div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="font-mono text-xs font-medium"><LatexFormula formula={seg.momentFormula} /></div>
-                      )}
+                        <div className="bg-blue-50 border border-blue-100 rounded-lg p-2">
+                          <div className="text-[10px] text-blue-700 font-semibold mb-1 flex items-center gap-1">
+                            <span>Moment</span>
+                            <span className="text-[9px] font-normal text-blue-500">ΣM<sub>cut</sub> = 0 (CW+)</span>
+                          </div>
+                          {seg.derivation ? (
+                            <div className="space-y-0.5">
+                              {/* Geometric initial equation */}
+                              {seg.derivation.moment.geometricEquation && (
+                                <div className="font-mono text-[10px] text-blue-500/70">
+                                  <LatexFormula formula={seg.derivation.moment.geometricEquation} />
+                                </div>
+                              )}
+                              {/* Simplified result */}
+                              <div className="font-mono text-xs font-semibold bg-white rounded px-2 py-0.5 border border-blue-100">
+                                <LatexFormula formula={seg.momentFormula} />
+                              </div>
+                              <div className="flex gap-3 text-[10px] text-slate-500 font-mono">
+                                <span><LatexFormula formula={seg.derivation.moment.atLeft} /></span>
+                                <span><LatexFormula formula={seg.derivation.moment.atRight} /></span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="font-mono text-xs font-medium"><LatexFormula formula={seg.momentFormula} /></div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       )}
